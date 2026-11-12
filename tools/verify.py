@@ -230,12 +230,44 @@ def check_composable_signatures() -> None:
                         fail(f"{rel}: {name}(... {arg} = ...) is not a parameter of {name}")
 
 
+# ---------------------------------------------------------------- CI workflow
+def check_ci() -> None:
+    """A GitHub release build is only useful if the wrapper and CI agree."""
+    workflow = os.path.join(ROOT, ".github/workflows/android.yml")
+    if not os.path.exists(workflow):
+        fail("missing .github/workflows/android.yml, GitHub cannot build the APK")
+        return
+    text = open(workflow, encoding="utf-8").read()
+    for needle, message in (
+        ("actions/checkout@v4", "workflow does not check out the repo"),
+        ("actions/setup-java@v4", "workflow does not set up a JDK"),
+        ('java-version: "17"', "workflow must use JDK 17 for AGP 8.7"),
+        ("assembleDebug", "workflow does not build the debug APK"),
+        ("upload-artifact", "workflow does not upload the APK artifact"),
+    ):
+        if needle not in text:
+            fail(f"{message} ({needle})")
+
+    wrapper = os.path.join(ROOT, "gradlew")
+    if not os.path.exists(wrapper):
+        fail("gradlew missing, ./gradlew cannot run on the CI runner")
+    elif not os.access(wrapper, os.X_OK):
+        fail("gradlew is not executable, chmod +x it before committing")
+
+    properties = os.path.join(ROOT, "gradle/wrapper/gradle-wrapper.properties")
+    if not os.path.exists(properties):
+        fail("gradle-wrapper.properties missing")
+    elif "gradle-8.9-bin.zip" not in open(properties, encoding="utf-8").read():
+        fail("wrapper must stay on Gradle 8.9 to match AGP 8.7.3")
+
+
 def main() -> int:
     check_gradle()
     check_kotlin_call_sites()
     check_strings()
     check_manifest()
     check_composable_signatures()
+    check_ci()
 
     for problem in problems:
         print("FAIL", problem)

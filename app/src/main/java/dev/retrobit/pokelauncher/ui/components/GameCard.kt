@@ -58,19 +58,19 @@ import dev.retrobit.pokelauncher.ui.theme.HgText
  */
 private fun cartridgePath(w: Float, h: Float): Path {
     val cut = w * 0.10f
-    val notch = w * 0.14f
+    val notch = w * 0.075f
     return Path().apply {
         moveTo(cut, 0f)
         lineTo(w - cut, 0f)
         lineTo(w, cut)
-        lineTo(w, h * 0.60f)
-        lineTo(w - notch, h * 0.72f)
-        lineTo(w - notch, h * 0.86f)
-        lineTo(w - cut * 0.7f, h)
-        lineTo(cut * 0.7f, h)
-        lineTo(notch, h * 0.86f)
-        lineTo(notch, h * 0.72f)
-        lineTo(0f, h * 0.60f)
+        lineTo(w, h * 0.70f)
+        lineTo(w - notch, h * 0.78f)
+        lineTo(w - notch, h * 0.92f)
+        lineTo(w - notch * 0.55f, h)
+        lineTo(notch * 0.55f, h)
+        lineTo(notch, h * 0.92f)
+        lineTo(notch, h * 0.78f)
+        lineTo(0f, h * 0.70f)
         lineTo(0f, cut)
         close()
     }
@@ -144,19 +144,19 @@ private fun CartridgeCard(
                             size = Size(w, h * 0.26f),
                         )
                         drawRect(
-                            color = Color.White.copy(alpha = 0.30f),
-                            topLeft = Offset(w * 0.13f, h * 0.035f),
-                            size = Size(w * 0.74f, h * 0.035f),
+                            color = Color.White.copy(alpha = 0.22f),
+                            topLeft = Offset(w * 0.16f, h * 0.030f),
+                            size = Size(w * 0.68f, h * 0.028f),
                         )
                     }
                     drawPath(path, color = HgColors.Ink, style = Stroke(width = 2.dp.toPx()))
 
-                    val gripY = h * 0.93f
+                    val gripY = h * 0.945f
                     for (i in 0..1) {
                         drawLine(
                             color = HgColors.Ink.copy(alpha = 0.4f),
-                            start = Offset(w * 0.40f, gripY + i * 2.5.dp.toPx()),
-                            end = Offset(w * 0.60f, gripY + i * 2.5.dp.toPx()),
+                            start = Offset(w * 0.42f, gripY + i * 2.5.dp.toPx()),
+                            end = Offset(w * 0.58f, gripY + i * 2.5.dp.toPx()),
                             strokeWidth = 1.dp.toPx(),
                         )
                     }

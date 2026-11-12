@@ -14,16 +14,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -51,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import dev.retrobit.pokelauncher.data.AppEntry
 import dev.retrobit.pokelauncher.data.LauncherSettings
 import dev.retrobit.pokelauncher.data.LauncherUiState
+import dev.retrobit.pokelauncher.data.PartyRules
 import dev.retrobit.pokelauncher.data.PartySlot
 import dev.retrobit.pokelauncher.ui.components.CloseIcon
 import dev.retrobit.pokelauncher.ui.components.GearIcon
@@ -118,6 +121,7 @@ fun LauncherScreen(viewModel: LauncherViewModel) {
                 HomeSurface(
                     state = state,
                     settings = settings,
+                    wide = wideLayout,
                     onOpenDrawer = { showDrawer = true },
                     onOpenMenu = { showMenu = true },
                     onOpenSettings = { showSettings = true },
@@ -310,6 +314,7 @@ private fun launchSlot(viewModel: LauncherViewModel, slot: PartySlot, onMissing:
 private fun HomeSurface(
     state: LauncherUiState,
     settings: LauncherSettings,
+    wide: Boolean,
     onOpenDrawer: () -> Unit,
     onOpenMenu: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -348,11 +353,16 @@ private fun HomeSurface(
                 onOpenSettings = onOpenSettings,
             )
             Spacer(Modifier.height(10.dp))
-            PlayerCard(partyCount = state.party.size, onOpenDrawer = onOpenDrawer)
+            PlayerCard(
+                partyCount = state.party.size,
+                onOpenDrawer = onOpenDrawer,
+                wide = wide,
+            )
             Spacer(Modifier.height(10.dp))
             PartyGrid(
                 state = state,
                 settings = settings,
+                wide = wide,
                 modifier = Modifier.weight(1f),
                 onLaunchSlot = onLaunchSlot,
                 onSlotLongPress = onSlotLongPress,
@@ -421,39 +431,65 @@ private fun formatNow(): String =
     LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
 
 @Composable
-private fun PlayerCard(partyCount: Int, onOpenDrawer: () -> Unit) {
+private fun PlayerCard(partyCount: Int, onOpenDrawer: () -> Unit, wide: Boolean) {
     HgPanel(modifier = Modifier.fillMaxWidth(), contentPadding = 10.dp) {
-        Column {
+        if (wide) {
+            // Tablets have room: diorama + copy on the left, action on the right.
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .width(84.dp)
-                        .height(50.dp)
-                        .background(HgColors.Cream, RoundedCornerShape(6.dp)),
-                ) {
-                    MiniDiorama(modifier = Modifier.fillMaxSize())
-                }
-                Spacer(Modifier.width(10.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.card_region),
-                        style = HgText.micro.copy(color = HgColors.RedDeep),
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(text = stringResource(R.string.card_party_label), style = HgText.body)
-                    Spacer(Modifier.height(5.dp))
-                    PartyIndicator(count = partyCount)
-                }
+                PartyDiorama()
+                Spacer(Modifier.width(12.dp))
+                PartyCopy(partyCount = partyCount, modifier = Modifier.weight(1f))
+                Spacer(Modifier.width(16.dp))
+                HgButton(
+                    text = stringResource(R.string.card_open_apps),
+                    onClick = onOpenDrawer,
+                    modifier = Modifier.width(230.dp),
+                    minHeight = 44.dp,
+                )
             }
-            Spacer(Modifier.height(9.dp))
-            // Full width action: a pixel font button never has to fight for space.
-            HgButton(
-                text = stringResource(R.string.card_open_apps),
-                onClick = onOpenDrawer,
-                modifier = Modifier.fillMaxWidth(),
-                minHeight = 40.dp,
-            )
+        } else {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    PartyDiorama()
+                    Spacer(Modifier.width(10.dp))
+                    PartyCopy(partyCount = partyCount, modifier = Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(9.dp))
+                // Full width action: a pixel font button never has to fight for space.
+                HgButton(
+                    text = stringResource(R.string.card_open_apps),
+                    onClick = onOpenDrawer,
+                    modifier = Modifier.fillMaxWidth(),
+                    minHeight = 40.dp,
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun PartyDiorama() {
+    Box(
+        modifier = Modifier
+            .width(84.dp)
+            .height(50.dp)
+            .background(HgColors.Cream, RoundedCornerShape(6.dp)),
+    ) {
+        MiniDiorama(modifier = Modifier.fillMaxSize())
+    }
+}
+
+@Composable
+private fun PartyCopy(partyCount: Int, modifier: Modifier = Modifier) {
+    Column(modifier = modifier) {
+        Text(
+            text = stringResource(R.string.card_region),
+            style = HgText.micro.copy(color = HgColors.RedDeep),
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(text = stringResource(R.string.card_party_label), style = HgText.body)
+        Spacer(Modifier.height(5.dp))
+        PartyIndicator(count = partyCount)
     }
 }
 
@@ -461,6 +497,7 @@ private fun PlayerCard(partyCount: Int, onOpenDrawer: () -> Unit) {
 private fun PartyGrid(
     state: LauncherUiState,
     settings: LauncherSettings,
+    wide: Boolean,
     modifier: Modifier = Modifier,
     onLaunchSlot: (PartySlot) -> Unit,
     onSlotLongPress: (PartySlot) -> Unit,
@@ -473,74 +510,97 @@ private fun PartyGrid(
         padded.take(6)
     }
 
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(settings.columns),
-        state = rememberLazyGridState(),
+    // A tablet has room for the whole party in a single line up: six cartridges
+    // side by side, just like the party screen in the games. Phones keep the
+    // column count chosen in the settings.
+    val columns = if (wide) GridCells.Fixed(PartyRules.MAX_SLOTS) else GridCells.Fixed(settings.columns)
+    Box(
         modifier = modifier,
-        contentPadding = PaddingValues(vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        // A tablet has spare height: centre the party block so the empty paper
+        // is split evenly instead of pooling at the bottom of the screen.
+        contentAlignment = if (wide) Alignment.Center else Alignment.TopCenter,
     ) {
-        itemsIndexed(slots) { index, slot ->
-            val entry = slot?.let { state.installedAppsByKey[it.key] }
-            PartySlotCard(
-                slot = slot,
-                icon = rememberAppIcon(entry, iconProvider),
-                style = settings.cardStyle,
-                slotIndex = index,
-                onClick = {
-                    if (slot == null) onAddFavourite() else onLaunchSlot(slot)
-                },
-                onLongClick = { slot?.let(onSlotLongPress) },
-            )
-        }
+        LazyVerticalGrid(
+            columns = columns,
+            state = rememberLazyGridState(),
+            // Cap the grid so a 12" tablet does not end up with giant cards.
+            modifier = Modifier
+                .widthIn(max = 1100.dp)
+                .then(if (wide) Modifier.heightIn(max = 520.dp) else Modifier.fillMaxHeight()),
+            contentPadding = PaddingValues(vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            itemsIndexed(slots) { index, slot ->
+                val entry = slot?.let { state.installedAppsByKey[it.key] }
+                PartySlotCard(
+                    slot = slot,
+                    icon = rememberAppIcon(entry, iconProvider),
+                    style = settings.cardStyle,
+                    slotIndex = index,
+                    onClick = {
+                        if (slot == null) onAddFavourite() else onLaunchSlot(slot)
+                    },
+                    onLongClick = { slot?.let(onSlotLongPress) },
+                )
+            }
 
-        if (state.party.isEmpty() && !state.loading) {
-            item(span = { GridItemSpan(maxLineSpan) }) {
-                HgPanel(modifier = Modifier.fillMaxWidth(), contentPadding = 14.dp) {
-                    Column {
-                        Text(
-                            text = stringResource(R.string.status_empty_title),
-                            style = HgText.heading,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = stringResource(R.string.status_empty_body),
-                            style = HgText.bodySoft,
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        HgButton(
-                            text = stringResource(R.string.action_pick_apps),
-                            onClick = onAddFavourite,
-                        )
+            if (state.party.isEmpty() && !state.loading) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    HgPanel(modifier = Modifier.fillMaxWidth(), contentPadding = 14.dp) {
+                        Column {
+                            Text(
+                                text = stringResource(R.string.status_empty_title),
+                                style = HgText.heading,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = stringResource(R.string.status_empty_body),
+                                style = HgText.bodySoft,
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            HgButton(
+                                text = stringResource(R.string.action_pick_apps),
+                                onClick = onAddFavourite,
+                            )
+                        }
                     }
                 }
             }
-        }
 
-        item(span = { GridItemSpan(maxLineSpan) }) {
-            StatusCard(partyCount = state.party.size, loading = state.loading)
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                StatusCard(
+                    partyCount = state.party.size,
+                    loading = state.loading,
+                    wide = wide,
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun StatusCard(partyCount: Int, loading: Boolean) {
+private fun StatusCard(partyCount: Int, loading: Boolean, wide: Boolean) {
+    val title = if (loading) {
+        stringResource(R.string.status_loading)
+    } else {
+        stringResource(R.string.status_party_filled, partyCount)
+    }
     HgPanel(modifier = Modifier.fillMaxWidth(), contentPadding = 12.dp) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Pokeball(size = 22.dp)
             Spacer(Modifier.width(10.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = if (loading) {
-                        stringResource(R.string.status_loading)
-                    } else {
-                        stringResource(R.string.status_party_filled, partyCount)
-                    },
-                    style = HgText.small,
-                )
-                Spacer(Modifier.height(2.dp))
+            if (wide) {
+                // One long strip: title on the left, the hint on the right.
+                Text(text = title, style = HgText.small)
+                Spacer(Modifier.weight(1f))
                 Text(text = stringResource(R.string.status_hint), style = HgText.tiny)
+            } else {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = title, style = HgText.small)
+                    Spacer(Modifier.height(2.dp))
+                    Text(text = stringResource(R.string.status_hint), style = HgText.tiny)
+                }
             }
         }
     }

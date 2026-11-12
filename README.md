@@ -4,10 +4,24 @@ Launcher Android native bergaya **Pokémon HeartGold / SoulSilver**: home screen
 enam slot "party", app drawer, jam HeartGold, dan setelan tampilan. Seluruh ilustrasi
 (langit Johto, bukit, Poké Ball, kartrid GBA) digambar dari kode Compose — tanpa aset berhak cipta.
 
-![Pratinjau home screen](docs/preview-home.png)
+| Ponsel (412 dp) | Tablet landscape (Huawei MatePad Mini, 853 dp) | Tablet portrait (533 dp) |
+| --- | --- | --- |
+| ![Pratinjau ponsel](docs/preview-home.png) | ![Pratinjau tablet landscape](docs/preview-tablet.png) | ![Pratinjau tablet portrait](docs/preview-tablet-portrait.png) |
 
-> Pratinjau di atas dibuat oleh `tools/render_preview.py` memakai palet warna asli dari
-> `ui/theme/Theme.kt` dan tata letak `LauncherScreen.kt`. Ini pratinjau desain, bukan render emulator.
+> Pratinjau dibuat oleh `tools/render_preview.py` dan `tools/render_tablet.py` memakai palet warna
+> asli dari `ui/theme/Theme.kt` dan tata letak `LauncherScreen.kt`. Ini pratinjau desain, bukan
+> render emulator. Mockup tablet memakai dimensi resmi MatePad Mini (8.8", 2560 × 1600, 343 ppi,
+> bezel ~4.4 mm, punch hole kamera di dalam layar).
+
+### Perilaku di layar besar
+
+| Lebar layar | Layout |
+| --- | --- |
+| < 700 dp | Kartu pemain bertumpuk (tombol APLIKASI selebar kartu), grid 2/3/4 kolom sesuai setelan |
+| ≥ 700 dp | Kartu pemain satu baris dengan tombol di kanan, enam kartrid sejajar, blok party di tengah, status card satu baris, setelan jadi panel samping 380 dp |
+
+MatePad Mini: **landscape 853 dp → layout lebar**, **portrait 533 dp → layout ponsel** (bukan
+tablet), karena ambangnya 700 dp. Keduanya sudah diuji secara visual lewat renderer di atas.
 
 ---
 
@@ -94,11 +108,25 @@ dijalankan di sini. Sebagai gantinya ada dua skrip pemeriksaan deterministik:
 ```bash
 python3 tools/static_check.py   # XML valid, referensi @resource, impor & delimiter Kotlin
 python3 tools/verify.py         # alias version catalog, call-site Compose, kunci strings id/en
-python3 tools/render_preview.py # regenerasi docs/preview-home.png
+python3 tools/render_preview.py  # regenerasi docs/preview-home.png (ponsel)
+python3 tools/render_tablet.py   # regenerasi kedua pratinjau tablet + bezel
 ```
 
 Keduanya lulus tanpa error pada commit ini. Tetap jalankan `./gradlew assembleDebug` sekali di
 mesin Anda; jika ada error kompilasi, kirimkan log-nya ke sesi ini untuk diperbaiki.
+
+## Build APK lewat GitHub Actions
+
+Repo ini menyertakan `.github/workflows/android.yml`: setiap push ke branch mana pun akan
+menjalankan `./gradlew assembleDebug` (dan unit test) di runner Ubuntu dengan JDK 17, lalu
+mengunggah APK debug sebagai artifact. Untuk membuat build sekali klik:
+
+1. Buka tab **Actions** → **Android build** → **Run workflow**, atau cukup push commit.
+2. Setelah selesai, unduh artifact **pokelauncher-debug** (berisi `app-debug.apk`).
+3. Salin APK ke tablet, izinkan *install unknown apps*, lalu pasang.
+
+Build release yang di-minify bisa dibuat lokal dengan `./gradlew assembleRelease` (butuh
+keystore sendiri).
 
 ## Kredit & lisensi
 
