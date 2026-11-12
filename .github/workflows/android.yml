@@ -122,6 +122,29 @@ jobs:
           if-no-files-found: ignore
           retention-days: 3
 
+      # The artifact download host is blocked on some networks. These steps let
+      # a maintainer confirm the APK contents through the annotations channel.
+      - name: Inspect APK
+        if: success()
+        continue-on-error: true
+        run: |
+          set -e
+          apk=$(find app/build/outputs/apk/debug -name "*.apk" | head -1)
+          ls -l "$apk"
+          unzip -l "$apk" | tail -1
+          for entry in classes.dex resources.arsc AndroidManifest.xml \
+                       res/xml/backup_rules.xml res/xml/data_extraction_rules.xml; do
+            if unzip -l "$apk" "$entry" >/dev/null 2>&1; then
+              echo "::notice title=apk::$entry present"
+            else
+              echo "::warning title=apk::$entry missing"
+            fi
+          done
+          unzip -l "$apk" | grep -E "res/font|mipmap" | head -8 | \
+            while read -r size date time name; do
+              echo "::notice title=apk::$name ($size bytes)"
+            done
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v5
         with:
