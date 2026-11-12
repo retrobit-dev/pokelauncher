@@ -149,7 +149,7 @@ jobs:
       # newest APK is also attached to a rolling prerelease with a stable URL:
       # https://github.com/retrobit-dev/pokelauncher/releases/download/apk-latest/pokelauncher-debug.apk
       - name: Publish APK as a release asset
-        if: success() && github.event_name != 'pull_request'
+        if: success() && github.ref == 'refs/heads/arena/e23dc36b-pokelauncher'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
