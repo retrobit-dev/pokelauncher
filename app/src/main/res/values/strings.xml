@@ -72,7 +72,7 @@
 
     <string name="drawer_clear">Hapus pencarian</string>
     <string name="slot_empty_letter">—</string>
-    <string name="slot_unknown_name">???</string>
+    <string name="slot_unknown_name" formatted="false">\?\?\?</string>
     <string name="slot_level">Lv%1$d</string>
     <string name="slot_add">Tambah aplikasi ke party</string>
     <string name="menu">Menu</string>

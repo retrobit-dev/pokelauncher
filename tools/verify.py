@@ -261,6 +261,28 @@ def check_ci() -> None:
         fail("wrapper must stay on Gradle 8.9 to match AGP 8.7.3")
 
 
+# -------------------------------------------------- strings aapt2 traps
+def check_string_escapes() -> None:
+    """aapt2 treats a value that starts with ? or @ as a resource reference.
+
+    A user facing string such as '???' therefore fails the build with
+    "resource attr/?? not found". Such values must be escaped (\?\?\?).
+    """
+    for locale in ("values", "values-in"):
+        path = os.path.join(RES, locale, "strings.xml")
+        if not os.path.exists(path):
+            fail(f"missing {locale}/strings.xml")
+            continue
+        tree = ET.parse(path)
+        for node in tree.getroot().iter("string"):
+            text = (node.text or "").strip()
+            if not text or node.attrib.get("translatable") == "false":
+                continue
+            if text.startswith(("?", "@")) and not text.startswith(("\\?", "\\@")):
+                fail(f"{locale}/strings.xml: '{node.attrib.get('name')}' starts with "
+                     f"'{text[0]}', aapt2 reads that as a resource reference; escape it")
+
+
 def main() -> int:
     check_gradle()
     check_kotlin_call_sites()
@@ -268,6 +290,7 @@ def main() -> int:
     check_manifest()
     check_composable_signatures()
     check_ci()
+    check_string_escapes()
 
     for problem in problems:
         print("FAIL", problem)
