@@ -8,6 +8,10 @@ enam slot "party", app drawer, jam HeartGold, dan setelan tampilan. Seluruh ilus
 | --- | --- | --- |
 | ![Pratinjau ponsel](docs/preview-home.png) | ![Pratinjau tablet landscape](docs/preview-tablet.png) | ![Pratinjau tablet portrait](docs/preview-tablet-portrait.png) |
 
+| HarmonyOS 4.3 landscape | HarmonyOS 4.3 portrait |
+| --- | --- |
+| ![Pratinjau HarmonyOS landscape](docs/preview-harmonyos.png) | ![Pratinjau HarmonyOS portrait](docs/preview-harmonyos-portrait.png) |
+
 > Pratinjau dibuat oleh `tools/render_preview.py` dan `tools/render_tablet.py` memakai palet warna
 > asli dari `ui/theme/Theme.kt` dan tata letak `LauncherScreen.kt`. Ini pratinjau desain, bukan
 > render emulator. Mockup tablet memakai dimensi resmi MatePad Mini (8.8", 2560 × 1600, 343 ppi,
@@ -22,6 +26,11 @@ enam slot "party", app drawer, jam HeartGold, dan setelan tampilan. Seluruh ilus
 
 ### Huawei MatePad Mini (HarmonyOS 4.3)
 
+`tools/render_harmonyos.py` menggambar ulang layar dengan chrome sistem HarmonyOS 4
+(status bar 27 dp berisi jam, wifi, sinyal, baterai; gesture bar 16 dp) dan inset itu ikut
+menggeser konten persis seperti `safeDrawingPadding()` di Compose. Di portrait jam status bar
+digeser ke kanan punch-hole, seperti perilaku EMUI.
+
 HarmonyOS **4.3.0 masih berbasis AOSP dan melaporkan API 31 (Android 12)**, jadi APK Android
 dipasang dan dijalankan native — tidak perlu HarmonyOS NEXT / AppGallery. Beberapa konsekuensinya:
 
@@ -34,6 +43,11 @@ dipasang dan dijalankan native — tidak perlu HarmonyOS NEXT / AppGallery. Bebe
 | `ACTION_HOME_SETTINGS` | sering tidak tersedia di EMUI | dicoba berurutan: intent EMUI → AOSP → default apps → detail app; kalau semuanya gagal muncul panduan manual |
 | Google Play Services | tidak ada | project tidak memakai GMS sama sekali |
 | `predictive back` / `POST_NOTIFICATIONS` | API 33 | tidak dipakai (dijaga `tools/verify.py`) |
+
+Cara paling cepat: menu **START → JADIKAN HOME DEFAULT → JADIKAN HOME**. Tombol itu memakai
+`RoleManager.createRequestRoleIntent(ROLE_HOME)` (API 29+, tersedia di HarmonyOS 4.3) sehingga
+dialog izin muncul langsung tanpa membuka Setelan. Kalau role manager tidak tersedia, aplikasi
+jatuh ke intent Setelan EMUI; kalau itu juga tidak ada, muncul panduan manual di bawah.
 
 Panduan manual jika dialog sistem tidak muncul: **Setelan → Aplikasi → Aplikasi default →
 Aplikasi layar utama → PokeLauncher**, atau **Setelan → Aplikasi → PokeLauncher → Buka secara
@@ -129,6 +143,7 @@ python3 tools/static_check.py   # XML valid, referensi @resource, impor & delimi
 python3 tools/verify.py         # alias version catalog, call-site Compose, kunci strings id/en
 python3 tools/render_preview.py  # regenerasi docs/preview-home.png (ponsel)
 python3 tools/render_tablet.py   # regenerasi kedua pratinjau tablet + bezel
+python3 tools/render_harmonyos.py # pratinjau dengan status bar + navigation bar EMUI
 ```
 
 Keduanya lulus tanpa error pada commit ini. Tetap jalankan `./gradlew assembleDebug` sekali di

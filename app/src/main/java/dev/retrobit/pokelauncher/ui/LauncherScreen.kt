@@ -270,13 +270,22 @@ fun LauncherScreen(viewModel: LauncherViewModel) {
             HgDialog(
                 title = stringResource(R.string.dialog_set_default_title),
                 body = stringResource(R.string.dialog_set_default_body),
-                confirmLabel = stringResource(R.string.dialog_open_settings),
-                dismissLabel = stringResource(R.string.dialog_cancel),
+                confirmLabel = stringResource(R.string.dialog_set_default_confirm),
+                dismissLabel = stringResource(R.string.dialog_open_settings),
                 onConfirm = {
                     showSetDefaultDialog = false
-                    // EMUI / HarmonyOS hide the HOME picker behind their own
-                    // "App launch" settings; when nothing resolves, the dialog
-                    // below spells the manual path out.
+                    // Preferred path on Android 10+: the system shows its own
+                    // "use PokeLauncher as home?" role dialog, no Settings trip.
+                    if (!viewModel.requestHomeRole()) {
+                        // EMUI / HarmonyOS hide the HOME picker behind their own
+                        // app settings; when nothing resolves, the guide below
+                        // spells the manual path out.
+                        if (!viewModel.openHomeSettings()) showManualHomeDialog = true
+                    }
+                },
+                onDismiss = {
+                    // "Buka pengaturan" keeps the old explicit route available.
+                    showSetDefaultDialog = false
                     if (!viewModel.openHomeSettings()) showManualHomeDialog = true
                 },
                 onDismiss = { showSetDefaultDialog = false },

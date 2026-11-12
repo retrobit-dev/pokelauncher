@@ -154,6 +154,18 @@ class Canvas:
                 for xx in range(x_from, x_to):
                     self.blend(xx, yy, colour, alpha)
 
+    def ring(self, cx: float, cy: float, r: float, width: float,
+             colour: tuple[int, int, int], alpha: float = 1.0) -> None:
+        """Hollow circle, used for the wifi glyph."""
+        outer = r + width / 2
+        for yy in range(max(0, int(cy - outer - 1)), min(self.h, int(cy + outer + 2))):
+            for xx in range(max(0, int(cx - outer - 1)), min(self.w, int(cx + outer + 2))):
+                distance = math.hypot(xx + 0.5 - cx, yy + 0.5 - cy)
+                cover = min(1.0, max(0.0, outer - distance + 0.5)) * \
+                        min(1.0, max(0.0, distance - (r - width / 2) + 0.5))
+                if cover > 0:
+                    self.blend(xx, yy, colour, alpha * cover)
+
     def gradient_rect(self, y0: float, y1: float, top: tuple[int, int, int],
                       bottom: tuple[int, int, int]) -> None:
         for yy in range(max(0, int(y0)), min(self.h, int(y1))):
@@ -182,6 +194,21 @@ class Canvas:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         open(path, "wb").write(png)
         return len(png)
+
+
+def arc_ring(cv: "Canvas", cx: float, cy: float, r: float, width: float,
+             colour: tuple[int, int, int], alpha: float = 1.0) -> None:
+    """Upper half of a ring: the wifi fan segment."""
+    outer = r + width / 2
+    for yy in range(max(0, int(cy - outer - 1)), min(cv.h, int(cy) + 1)):
+        for xx in range(max(0, int(cx - outer - 1)), min(cv.w, int(cx + outer + 2))):
+            if yy + 0.5 > cy:
+                continue
+            distance = math.hypot(xx + 0.5 - cx, yy + 0.5 - cy)
+            cover = min(1.0, max(0.0, outer - distance + 0.5)) * \
+                    min(1.0, max(0.0, distance - (r - width / 2) + 0.5))
+            if cover > 0:
+                cv.blend(xx, yy, colour, alpha * cover)
 
 
 def mix(a: tuple[int, int, int], b: tuple[int, int, int], t: float) -> tuple[int, int, int]:
@@ -456,8 +483,11 @@ class Device:
     CORNER = 62
     SCREEN_CORNER = 30
 
-    def __init__(self, w: int, h: int) -> None:
+    def __init__(self, w: int, h: int, inset_top: int = 0, inset_bottom: int = 0) -> None:
         self.w, self.h = w, h            # display size in px
+        # Window insets, like safeDrawingPadding() sees them on a real device.
+        self.inset_top = int(inset_top)
+        self.inset_bottom = int(inset_bottom)
         self.wide = w >= dp(700)         # same rule as LauncherScreen.kt
         self.outer_w = w + 2 * self.BEZEL
         self.outer_h = h + 2 * self.BEZEL
@@ -515,6 +545,48 @@ class Device:
                 alpha = 0.22 + (0.60 - 0.22) * k
                 colour = PAPER
             cv.rect(0, yy, self.w, 1, colour, alpha=alpha)
+
+    # -- system bars ----------------------------------------------------
+    def draw_system_bars(self, cv: Canvas, clock: str = "21:07") -> None:
+        """Status bar and navigation bar as EMUI 13 (HarmonyOS 4) draws them.
+
+        The launcher is edge to edge with transparent bars, so the wallpaper
+        shows through; only the glyphs and the gesture pill are painted.
+        """
+        text_tint = INK
+        # status bar: clock left, indicator cluster right
+        bar_h = self.inset_top
+        if bar_h:
+            scale = ts(2.4)
+            mid = bar_h / 2 + 1
+            # EMUI pushes status bar content past the punch hole; in portrait
+            # the camera sits exactly where the clock would go.
+            clock_x = dp(17) if self.wide else dp(44) + dp(13)
+            draw_text(cv, clock_x, mid - 7 * scale / 2, clock, text_tint, scale)
+            # wifi: three concentric arcs opening upwards
+            wifi_x, wifi_y = self.w - dp(74), mid + dp(3.4)
+            for index in range(3):
+                r = dp(2.6) + index * dp(2.4)
+                arc_ring(cv, wifi_x, wifi_y, r, max(1.0, dp(0.55)),
+                               text_tint, alpha=0.95 - index * 0.12)
+            cv.disc(wifi_x, wifi_y, dp(1.1), text_tint)
+            # mobile signal: four bars
+            for index in range(4):
+                h = dp(2.5) + index * dp(2.0)
+                cv.rect(self.w - dp(48) + index * dp(4.2), mid + dp(3) - h, dp(3), h,
+                        text_tint, dp(0.8))
+            # battery: outline + fill
+            bat_x, bat_w, bat_h = self.w - dp(27), dp(17), dp(8.6)
+            cv.rect(bat_x, mid - bat_h / 2, bat_w, bat_h, text_tint, dp(2))
+            cv.rect(bat_x + dp(0.9), mid - bat_h / 2 + dp(0.9),
+                    (bat_w - dp(1.8)) * 0.72, bat_h - dp(1.8), text_tint, dp(1.4))
+            cv.rect(bat_x + bat_w + dp(0.6), mid - dp(1.6), dp(1.4), dp(3.2), text_tint, dp(0.6))
+
+        # navigation: gesture pill centred, on whichever edge the bar sits
+        if self.inset_bottom:
+            pill_w, pill_h = dp(48), dp(1.6)
+            pill_y = self.h - self.inset_bottom / 2 - pill_h / 2
+            cv.rect((self.w - pill_w) / 2, pill_y, pill_w, pill_h, INK, pill_h / 2, alpha=0.55)
 
     # -- composables ---------------------------------------------------
     def top_bar(self, cv: Canvas, margin: float, y: float) -> float:
@@ -650,16 +722,17 @@ class Device:
             draw_text(cv, grid_x + dp(46), status_y + dp(8) + 7 * ts(4) + dp(2),
                       hint, INK_SOFT, ts(2))
 
-    def draw_screen(self) -> Canvas:
+    def draw_screen(self, system_bars: bool = False) -> Canvas:
         cv = Canvas(self.w, self.h, SKY_TOP)
         self.wallpaper(cv)
         self.scrim(cv)
 
         margin = dp(16)
-        y = dp(10)
+        y = self.inset_top + dp(10)
         y += self.top_bar(cv, margin, y) + dp(10)
         y += self.player_card(cv, margin, y, self.w - margin * 2) + dp(10)
-        self.party_grid(cv, margin, y, self.w - margin * 2, y, self.h - dp(10))
+        self.party_grid(cv, margin, y, self.w - margin * 2, y,
+                        self.h - self.inset_bottom - dp(10))
 
         # round the panel corners, like the real OLED cut
         corner = self.SCREEN_CORNER
@@ -669,6 +742,8 @@ class Device:
                 for xx in range(int(cx), int(cx) + corner):
                     if not round_rect_contains(xx + 0.5, yy + 0.5, 0, 0, self.w, self.h, corner):
                         cv.blend(xx, yy, BEZEL_DARK, 1.0)
+        if system_bars:
+            self.draw_system_bars(cv)
         return cv
 
     # -- hardware ------------------------------------------------------

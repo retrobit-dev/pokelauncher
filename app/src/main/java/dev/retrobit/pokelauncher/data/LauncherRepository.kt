@@ -1,11 +1,13 @@
 package dev.retrobit.pokelauncher.data
 
+import android.app.role.RoleManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import android.graphics.drawable.Drawable
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import android.util.LruCache
@@ -108,6 +110,24 @@ class LauncherRepository(private val context: Context) {
             data = Uri.parse("package:$packageName")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
+        return runCatching { context.startActivity(intent) }.isSuccess
+    }
+
+    /**
+     * Asks the system to make this app the home app.
+     *
+     * From Android 10 the role manager shows the permission dialog itself, so
+     * the user never has to dig through Settings; EMUI / HarmonyOS 4 exposes
+     * the same API because it is plain AOSP underneath. Returns false when the
+     * role is not available (older ROMs) so the caller can fall back.
+     */
+    fun requestHomeRole(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
+        val manager = context.getSystemService(RoleManager::class.java) ?: return false
+        if (!manager.isRoleAvailable(RoleManager.ROLE_HOME)) return false
+        if (manager.isRoleHeld(RoleManager.ROLE_HOME)) return false
+        val intent = manager.createRequestRoleIntent(RoleManager.ROLE_HOME)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         return runCatching { context.startActivity(intent) }.isSuccess
     }
 

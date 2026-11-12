@@ -68,6 +68,8 @@ class LauncherViewModel(private val repository: LauncherRepository) : ViewModel(
 
     fun uninstall(packageName: String) = repository.uninstall(packageName)
 
+    fun requestHomeRole() = repository.requestHomeRole()
+
     fun openHomeSettings() = repository.openHomeSettings()
 
     // ------------------------------------------------------------- party

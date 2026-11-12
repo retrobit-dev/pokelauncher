@@ -318,6 +318,29 @@ def check_harmonyos_compat() -> None:
 
 
 
+def check_home_role_flow() -> None:
+    """Becoming the home app must not depend on a Settings page that EMUI hides."""
+    repo = open(os.path.join(
+        ROOT, "app/src/main/java/dev/retrobit/pokelauncher/data/LauncherRepository.kt"),
+        encoding="utf-8").read()
+    if "RoleManager.ROLE_HOME" not in repo:
+        fail("LauncherRepository must request RoleManager.ROLE_HOME (API 29+)")
+    if "Build.VERSION.SDK_INT < Build.VERSION_CODES.Q" not in repo:
+        fail("requestHomeRole must be guarded for API < 29")
+
+    screen = open(os.path.join(
+        ROOT, "app/src/main/java/dev/retrobit/pokelauncher/ui/LauncherScreen.kt"),
+        encoding="utf-8").read()
+    for needle, why in (
+        ("viewModel.requestHomeRole()", "set default dialog must try the role request first"),
+        ("showManualHomeDialog = true", "manual guide must stay as the last resort"),
+    ):
+        if needle not in screen:
+            fail(f"LauncherScreen.kt: {why} ({needle})")
+
+
+
+
 def main() -> int:
     check_gradle()
     check_kotlin_call_sites()
@@ -327,6 +350,7 @@ def main() -> int:
     check_ci()
     check_string_escapes()
     check_harmonyos_compat()
+    check_home_role_flow()
 
     for problem in problems:
         print("FAIL", problem)
