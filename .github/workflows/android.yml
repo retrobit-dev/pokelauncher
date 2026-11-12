@@ -38,65 +38,69 @@ jobs:
       # the REST API) and uploaded as an artifact.
       - name: Report compiler errors as annotations
         if: always()
+        continue-on-error: true
         run: |
           python3 - <<'EOF'
-          """Turn the parts of the Gradle log we need into workflow annotations.
+          """Re-emit the interesting parts of the Gradle log as annotations.
 
           Raw job logs are hosted on a blob domain that some networks cannot
-          reach, so the relevant lines are re-emitted here. Annotations are
-          limited to ~1 KB of message text per run, so the log is filtered
-          down to the lines a human actually needs.
+          reach, so the relevant lines are surfaced here instead. Annotations
+          are capped at ~1 KB per run, hence the filtering.
           """
-          import pathlib, re
+          import glob
+          import os
+          import pathlib
+          import re
+
 
           def ann(kind, message):
               clean = str(message).replace("::", ":").replace("%", "%25").replace("\r", "")
               print(f"::{kind} title=build::{clean}"[:900])
 
+
           log = pathlib.Path("build.log")
           if not log.exists():
-              ann("error", "build.log missing")
+              ann("notice", "build.log missing")
               raise SystemExit(0)
+
           log_text = log.read_text(errors="replace")
-          lines = [l.rstrip() for l in log_text.splitlines()]
-
-          # the exact lines aapt2 complains about, straight from the merged files
-          import glob, os
-          if "BUILD SUCCESSFUL" not in log_text:
-              for path in sorted(glob.glob(
-                  "app/build/intermediates/**/merged.dir/values*/values*.xml", recursive=True)):
-              try:
-                  content = pathlib.Path(path).read_text(errors="replace").splitlines()
-              except OSError:
-                  continue
-              for i, line in enumerate(content):
-                      if "??" in line or "attr/" in line:
-                          ann("error", f"{os.path.relpath(path)}:{i+1}: {line.strip()[:180]}")
-
-          if "BUILD SUCCESSFUL" in log_text:
+          success = "BUILD SUCCESSFUL" in log_text
+          if success:
               ann("notice", "BUILD SUCCESSFUL")
 
+          # On failure, show the merged values lines aapt2 complains about.
+          if not success:
+              for path in sorted(glob.glob(
+                      "app/build/intermediates/**/merged.dir/values*/values*.xml",
+                      recursive=True))[:4]:
+                  try:
+                      content = pathlib.Path(path).read_text(errors="replace").splitlines()
+                  except OSError:
+                      continue
+                  for index, line in enumerate(content):
+                      if "??" in line or "attr/??" in line:
+                          ann("error", f"{os.path.relpath(path)}:{index + 1}: {line.strip()[:160]}")
+
           patterns = {
-              "error": r"error:|e: file://|FAILED|Exception|Caused by|failed to",
-              "warning": r"^(w:|warning:)|: warning:|Deprecated",
-              "notice": r"^> Task :app:(assemble|compile|test)|BUILD ",
+              "error": r"error:|e: file://|FAILED|Caused by",
+              "warning": r"^(w:|warning:)|: warning:",
+              "notice": r"^> Task :app:(assemble|compile|test)",
           }
           for kind, pattern in patterns.items():
               seen = set()
-              for line in lines:
+              for line in log_text.splitlines():
                   stripped = line.strip()
-                  if not re.search(pattern, stripped):
-                      continue
-                  if stripped in seen:
+                  if not re.search(pattern, stripped) or stripped in seen:
                       continue
                   seen.add(stripped)
                   ann(kind, stripped)
-                  if len(seen) >= (18 if kind == "error" else 10):
+                  if len(seen) >= (18 if kind == "error" else 8):
                       break
           EOF
 
-      - name: Summarise failure
-        if: failure()
+      - name: Summarise build
+        if: always()
+        continue-on-error: true
         run: |
           {
             echo '### Build failed'
