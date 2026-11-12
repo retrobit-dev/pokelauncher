@@ -29,7 +29,36 @@ jobs:
 
       # The wrapper jar is committed, so ./gradlew works without a system Gradle.
       - name: Compile and run unit tests
-        run: ./gradlew --no-daemon --stacktrace assembleDebug testDebugUnitTest
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace --console=plain assembleDebug testDebugUnitTest 2>&1 | tee build.log
+
+      # Raw job logs live on a blob host that some networks cannot reach, so the
+      # compiler output is also emitted as workflow annotations (readable via
+      # the REST API) and uploaded as an artifact.
+      - name: Report compiler errors as annotations
+        if: failure()
+        run: |
+          python3 - <<'EOF'
+          import pathlib, re
+
+          log = pathlib.Path("build.log").read_text(errors="replace").splitlines()
+          issues = []
+          for line in log:
+              match = re.match(r"e: file:///(.*?):(\d+):(\d+) (.*)", line)
+              if match:
+                  issues.append((match.group(1), match.group(2), match.group(3), match.group(4)))
+                  continue
+              stripped = line.strip()
+              if stripped.startswith("e: ") or "error:" in stripped.lower() or "FAILURE:" in stripped:
+                  issues.append(("", "1", "1", stripped))
+
+          for path, line, col, message in issues[:40]:
+              clean = message.replace("::", ":").replace("%", "%25")
+              location = f"file={path},line={line},col={col}," if path else ""
+              print(f"::error {location}title=build::{clean}")
+          print(f"::notice::parsed {len(issues)} compiler issue(s)")
+          EOF
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
