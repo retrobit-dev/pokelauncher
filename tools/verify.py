@@ -210,7 +210,9 @@ def check_composable_signatures() -> None:
 
     builtin_like = {
         "Modifier", "Dp", "Color", "Boolean", "Float", "TextStyle", "String", "Int",
-        "activityName", "label", "onMissing",
+        # Names that appear as named arguments of our own data classes or of
+    # lambdas passed to composables; they are checked by their own constructors.
+    "activityName", "label", "onMissing",
     }
     for path, src in sources.items():
         rel = os.path.relpath(path, ROOT)
