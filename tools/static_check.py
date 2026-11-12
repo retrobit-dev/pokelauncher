@@ -14,7 +14,7 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root
 RES = os.path.join(ROOT, "app/src/main/res")
 KOTLIN = os.path.join(ROOT, "app/src/main/java")
 
