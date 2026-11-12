@@ -20,6 +20,25 @@ enam slot "party", app drawer, jam HeartGold, dan setelan tampilan. Seluruh ilus
 | < 700 dp | Kartu pemain bertumpuk (tombol APLIKASI selebar kartu), grid 2/3/4 kolom sesuai setelan |
 | ≥ 700 dp | Kartu pemain satu baris dengan tombol di kanan, enam kartrid sejajar, blok party di tengah, status card satu baris, setelan jadi panel samping 380 dp |
 
+### Huawei MatePad Mini (HarmonyOS 4.3)
+
+HarmonyOS **4.3.0 masih berbasis AOSP dan melaporkan API 31 (Android 12)**, jadi APK Android
+dipasang dan dijalankan native — tidak perlu HarmonyOS NEXT / AppGallery. Beberapa konsekuensinya:
+
+| Hal | Perilaku di HarmonyOS 4.3 | Status di project |
+| --- | --- | --- |
+| minSdk / targetSdk | 26 / 35 | Aman: semua API yang dipakai ≤ API 31 |
+| Ikon adaptive | didukung sejak API 26 | vector v26 + fallback PNG |
+| Splash screen | memakai `values-v31` (windowSplashScreen*) | otomatis aktif |
+| Ikon monokrom (tema) | hanya v33 | diabaikan, fallback ke ikon biasa |
+| `ACTION_HOME_SETTINGS` | sering tidak tersedia di EMUI | dicoba berurutan: intent EMUI → AOSP → default apps → detail app; kalau semuanya gagal muncul panduan manual |
+| Google Play Services | tidak ada | project tidak memakai GMS sama sekali |
+| `predictive back` / `POST_NOTIFICATIONS` | API 33 | tidak dipakai (dijaga `tools/verify.py`) |
+
+Panduan manual jika dialog sistem tidak muncul: **Setelan → Aplikasi → Aplikasi default →
+Aplikasi layar utama → PokeLauncher**, atau **Setelan → Aplikasi → PokeLauncher → Buka secara
+default → Layar utama**, lalu tekan tombol Home.
+
 MatePad Mini: **landscape 853 dp → layout lebar**, **portrait 533 dp → layout ponsel** (bukan
 tablet), karena ambangnya 700 dp. Keduanya sudah diuji secara visual lewat renderer di atas.
 

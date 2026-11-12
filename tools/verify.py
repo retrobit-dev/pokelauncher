@@ -283,6 +283,41 @@ def check_string_escapes() -> None:
                      f"'{text[0]}', aapt2 reads that as a resource reference; escape it")
 
 
+# ------------------------------------------------- device compatibility
+# Huawei MatePad Mini ships HarmonyOS 4.3, which is still AOSP based and
+# reports API 31 (Android 12). Anything above that level must be resource or
+# version gated, otherwise the launcher silently loses features there.
+HARMONYOS_API = 31
+
+
+def check_harmonyos_compat() -> None:
+    build = open(os.path.join(ROOT, "app/build.gradle.kts"), encoding="utf-8").read()
+    min_sdk = re.search(r"minSdk\s*=\s*(\d+)", build)
+    if not min_sdk or int(min_sdk.group(1)) > HARMONYOS_API:
+        fail(f"minSdk must stay <= {HARMONYOS_API} for HarmonyOS 4.3 / Android 12")
+
+    manifest = open(os.path.join(ROOT, "app/src/main/AndroidManifest.xml"), encoding="utf-8").read()
+    # strip XML comments first: the manifest documents what it does *not* use
+    manifest_code = re.sub(r"<!--.*?-->", "", manifest, flags=re.DOTALL)
+    for banned, why in (
+        ("android:enableOnBackInvokedCallback", "API 33 only"),
+        ("foregroundServiceType", "API 29+ and unused here"),
+        ("POST_NOTIFICATIONS", "API 33 permission, unused here"),
+        ("QUERY_ALL_PACKAGES", "policy sensitive, unnecessary with <queries>"),
+    ):
+        if banned in manifest_code:
+            fail(f"manifest uses {banned} ({why}); it is not needed on API {HARMONYOS_API}")
+
+    res = os.path.join(ROOT, "app/src/main/res")
+    # Themed / monochrome icons are only referenced from mipmap-anydpi-v33.
+    for name in ("ic_launcher.xml", "ic_launcher_round.xml"):
+        v26 = os.path.join(res, "mipmap-anydpi-v26", name)
+        if not os.path.exists(v26):
+            fail(f"mipmap-anydpi-v26/{name} missing; HarmonyOS 4.3 would fall back to a bitmap")
+
+
+
+
 def main() -> int:
     check_gradle()
     check_kotlin_call_sites()
@@ -291,6 +326,7 @@ def main() -> int:
     check_composable_signatures()
     check_ci()
     check_string_escapes()
+    check_harmonyos_compat()
 
     for problem in problems:
         print("FAIL", problem)

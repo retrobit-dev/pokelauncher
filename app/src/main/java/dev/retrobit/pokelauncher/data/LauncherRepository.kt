@@ -111,10 +111,35 @@ class LauncherRepository(private val context: Context) {
         return runCatching { context.startActivity(intent) }.isSuccess
     }
 
+    /**
+     * Opens the system screen where the default home app is chosen.
+     *
+     * EMUI / HarmonyOS 4 hides [Settings.ACTION_HOME_SETTINGS] and has no
+     * role manager page for HOME, so the generic intent throws and the user is
+     * left guessing. The candidates are tried from the most specific to the
+     * most generic; the caller shows written instructions when none of them
+     * resolve.
+     */
     fun openHomeSettings(): Boolean {
-        val intent = Intent(Settings.ACTION_HOME_SETTINGS)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        return runCatching { context.startActivity(intent) }.isSuccess
+        val candidates = listOf(
+            // EMUI / HarmonyOS home app picker.
+            Intent("com.huawei.android.settings.HomeAppSettings"),
+            // Standard AOSP / EMUI settings page for default apps.
+            Intent(Settings.ACTION_HOME_SETTINGS),
+            Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS),
+            // Last resort: the app's own details page, which still shows the
+            // "Open by default" section on most ROMs.
+            Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", context.packageName, null),
+            ),
+        )
+        for (candidate in candidates) {
+            candidate.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (candidate.resolveActivity(context.packageManager) == null) continue
+            if (runCatching { context.startActivity(candidate) }.isSuccess) return true
+        }
+        return false
     }
 
     // -------------------------------------------------------------- party

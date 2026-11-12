@@ -64,6 +64,8 @@
     <!-- Dialogs -->
     <string name="dialog_set_default_title">JADIKAN HOME?</string>
     <string name="dialog_set_default_body">Pilih PokeLauncher, lalu tekan &quot;Selalu&quot; agar tombol Home membawa Anda kembali ke sini.</string>
+    <string name="dialog_manual_home_title">PILIH HOME SECARA MANUAL</string>
+    <string name="dialog_manual_home_body">HarmonyOS 4 (EMUI) tidak punya halaman pemilih home. Buka Setelan &gt; Aplikasi &gt; Aplikasi default &gt; Aplikasi layar utama, lalu pilih PokeLauncher. Jika menu itu tidak ada: Setelan &gt; Aplikasi &gt; PokeLauncher &gt; Buka secara default &gt; Layar utama. Tekan tombol Home setelah itu.</string>
     <string name="dialog_open_settings">BUKA PENGATURAN</string>
     <string name="dialog_cancel">BATAL</string>
     <string name="dialog_party_full_title">PARTY PENUH</string>

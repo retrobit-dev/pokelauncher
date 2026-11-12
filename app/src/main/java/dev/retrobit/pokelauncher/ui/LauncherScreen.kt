@@ -96,6 +96,7 @@ fun LauncherScreen(viewModel: LauncherViewModel) {
     var selectedApp by remember { mutableStateOf<AppEntry?>(null) }
     var showSetDefaultDialog by rememberSaveable { mutableStateOf(false) }
     var showPartyFullDialog by rememberSaveable { mutableStateOf(false) }
+    var showManualHomeDialog by rememberSaveable { mutableStateOf(false) }
 
     // Exactly one BackHandler is registered, so the topmost layer always wins.
     // With no layer open the press is swallowed: a HOME activity must never
@@ -273,12 +274,22 @@ fun LauncherScreen(viewModel: LauncherViewModel) {
                 dismissLabel = stringResource(R.string.dialog_cancel),
                 onConfirm = {
                     showSetDefaultDialog = false
-                    if (!viewModel.openHomeSettings()) {
-                        // Some ROMs hide the HOME settings page; fall back to app details.
-                        viewModel.openAppInfo(DEFAULT_APP_INFO_PACKAGE)
-                    }
+                    // EMUI / HarmonyOS hide the HOME picker behind their own
+                    // "App launch" settings; when nothing resolves, the dialog
+                    // below spells the manual path out.
+                    if (!viewModel.openHomeSettings()) showManualHomeDialog = true
                 },
                 onDismiss = { showSetDefaultDialog = false },
+            )
+        }
+
+        if (showManualHomeDialog) {
+            HgDialog(
+                title = stringResource(R.string.dialog_manual_home_title),
+                body = stringResource(R.string.dialog_manual_home_body),
+                confirmLabel = stringResource(R.string.dialog_ok),
+                onConfirm = { showManualHomeDialog = false },
+                onDismiss = { showManualHomeDialog = false },
             )
         }
 
@@ -293,8 +304,6 @@ fun LauncherScreen(viewModel: LauncherViewModel) {
         }
     }
 }
-
-private const val DEFAULT_APP_INFO_PACKAGE = "dev.retrobit.pokelauncher"
 
 private fun launchSlot(viewModel: LauncherViewModel, slot: PartySlot, onMissing: () -> Unit) {
     if (!slot.installed) {
