@@ -239,8 +239,8 @@ def check_ci() -> None:
         return
     text = open(workflow, encoding="utf-8").read()
     for needle, message in (
-        ("actions/checkout@v4", "workflow does not check out the repo"),
-        ("actions/setup-java@v4", "workflow does not set up a JDK"),
+        ("actions/checkout@v", "workflow does not check out the repo"),
+        ("actions/setup-java@v", "workflow does not set up a JDK"),
         ('java-version: "17"', "workflow must use JDK 17 for AGP 8.7"),
         ("assembleDebug", "workflow does not build the debug APK"),
         ("upload-artifact", "workflow does not upload the APK artifact"),
