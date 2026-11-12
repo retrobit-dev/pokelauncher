@@ -37,7 +37,7 @@ jobs:
       # compiler output is also emitted as workflow annotations (readable via
       # the REST API) and uploaded as an artifact.
       - name: Report compiler errors as annotations
-        if: failure()
+        if: always()
         run: |
           python3 - <<'EOF'
           """Turn the parts of the Gradle log we need into workflow annotations.
@@ -57,7 +57,8 @@ jobs:
           if not log.exists():
               ann("error", "build.log missing")
               raise SystemExit(0)
-          lines = [l.rstrip() for l in log.read_text(errors="replace").splitlines()]
+          log_text = log.read_text(errors="replace")
+          lines = [l.rstrip() for l in log_text.splitlines()]
 
           # the exact lines aapt2 complains about, straight from the merged files
           import glob, os
@@ -71,9 +72,13 @@ jobs:
                   if "??" in line or "attr/" in line:
                       ann("error", f"{os.path.relpath(path)}:{i+1}: {line.strip()[:180]}")
 
+          if "BUILD SUCCESSFUL" in log_text:
+              ann("notice", "BUILD SUCCESSFUL")
+
           patterns = {
               "error": r"error:|e: file://|FAILED|Exception|Caused by|failed to",
-              "notice": r"^> Task |BUILD |warning: |Note: |Deprecated",
+              "warning": r"^(w:|warning:)|: warning:|Deprecated",
+              "notice": r"^> Task :app:(assemble|compile|test)|BUILD ",
           }
           for kind, pattern in patterns.items():
               seen = set()
@@ -85,7 +90,7 @@ jobs:
                       continue
                   seen.add(stripped)
                   ann(kind, stripped)
-                  if len(seen) >= (18 if kind == "error" else 12):
+                  if len(seen) >= (18 if kind == "error" else 10):
                       break
           EOF
 
