@@ -349,6 +349,47 @@ def check_experimental_opt_in() -> None:
             )
 
 
+def check_duplicate_named_args() -> None:
+    """A call cannot pass the same named parameter twice.
+
+    Kotlin only reports "e: Argument already passed for this parameter" at
+    compile time; this catches it in the sandbox. Arguments are read at the
+    top level of the call only, so named values inside nested lambdas and
+    parameter declarations are never counted.
+    """
+    for path in kotlin_files():
+        text = open(path, encoding="utf-8").read()
+        for match in re.finditer(r"\b([A-Z]\w*)\(", text):
+            args: list[str] = []
+            depth, index, start = 1, match.end(), match.end()
+            while index < len(text) and depth:
+                char = text[index]
+                if char in "([{":
+                    depth += 1
+                elif char in ")]}":
+                    depth -= 1
+                elif char == "," and depth == 1:
+                    args.append(text[start:index])
+                    start = index + 1
+                index += 1
+            if depth:
+                continue
+            args.append(text[start:index - 1])
+
+            names = []
+            for argument in args:
+                named = re.match(r"\s*(\w+)\s*=(?!=)", argument)
+                if named:
+                    names.append(named.group(1))
+            duplicates = {n for n in names if names.count(n) > 1}
+            for duplicate in duplicates:
+                line = text[:match.start()].count("\n") + 1
+                errors.append(
+                    f"{os.path.relpath(path, ROOT)}:{line}: {match.group(1)}(...) passes "
+                    f"'{duplicate}' twice"
+                )
+
+
 def main() -> int:
     check_xml()
     check_resource_refs()
@@ -356,6 +397,7 @@ def main() -> int:
     check_manifest()
     check_imported_helpers()
     check_experimental_opt_in()
+    check_duplicate_named_args()
 
     for warning in warnings:
         print("WARN ", warning)

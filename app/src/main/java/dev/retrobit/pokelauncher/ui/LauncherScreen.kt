@@ -288,7 +288,6 @@ fun LauncherScreen(viewModel: LauncherViewModel) {
                     showSetDefaultDialog = false
                     if (!viewModel.openHomeSettings()) showManualHomeDialog = true
                 },
-                onDismiss = { showSetDefaultDialog = false },
             )
         }
 
