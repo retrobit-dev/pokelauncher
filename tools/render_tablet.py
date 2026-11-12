@@ -24,6 +24,7 @@ from __future__ import annotations
 import math
 import os
 import struct
+import sys
 import zlib
 
 # ---------------------------------------------------------------- palette
@@ -723,19 +724,27 @@ class Device:
         return self.cv
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--orientation", choices=("landscape", "portrait"), default=None,
+                       help="render a single orientation (default: both)")
+    args = parser.parse_args(argv)
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    # Landscape: 2560 x 1600 -> 853 dp wide, the wide layout.
-    landscape = Device(2560, 1600)
-    png = landscape.render().to_png(os.path.join(root, "docs", "preview-tablet.png"))
-    print(f"docs/preview-tablet.png ({png // 1024} KB, {landscape.outer_w}x{landscape.outer_h})")
+    if args.orientation in (None, "landscape"):
+        # 2560 x 1600 -> 853 dp wide, the wide layout.
+        landscape = Device(2560, 1600)
+        png = landscape.render().to_png(os.path.join(root, "docs", "preview-tablet.png"))
+        print(f"docs/preview-tablet.png ({png // 1024} KB, {landscape.outer_w}x{landscape.outer_h})")
 
-    # Portrait: 1600 x 2560 -> 533 dp wide, the phone layout.
-    portrait = Device(1600, 2560)
-    png = portrait.render().to_png(os.path.join(root, "docs", "preview-tablet-portrait.png"))
-    print(f"docs/preview-tablet-portrait.png ({png // 1024} KB, {portrait.outer_w}x{portrait.outer_h})")
+    if args.orientation in (None, "portrait"):
+        # 1600 x 2560 -> 533 dp wide, the phone layout.
+        portrait = Device(1600, 2560)
+        png = portrait.render().to_png(os.path.join(root, "docs", "preview-tablet-portrait.png"))
+        print(f"docs/preview-tablet-portrait.png ({png // 1024} KB, {portrait.outer_w}x{portrait.outer_h})")
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])

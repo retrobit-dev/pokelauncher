@@ -60,6 +60,18 @@ jobs:
           print(f"::notice::parsed {len(issues)} compiler issue(s)")
           EOF
 
+      - name: Upload compiled resource dump
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resources-failure
+          path: |
+            app/build/intermediates/incremental/debug/mergeDebugResources/**
+            app/build/intermediates/merged_res/debug/**
+            app/build/intermediates/packaged_res/debug/**
+          if-no-files-found: ignore
+          retention-days: 3
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
