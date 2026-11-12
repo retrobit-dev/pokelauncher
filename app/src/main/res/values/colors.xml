@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- HeartGold paper tones used by the window + splash background. -->
+    <color name="hg_paper">#FBF3DC</color>
+    <color name="hg_paper_deep">#F3E4BF</color>
+    <color name="hg_ink">#3B2F1E</color>
+    <color name="ic_launcher_background">#F3E4BF</color>
+</resources>

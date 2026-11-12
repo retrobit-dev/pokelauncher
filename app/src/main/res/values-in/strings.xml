@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PokeLauncher</string>
+
+    <!-- Top bar / player card -->
+    <string name="top_menu">Menu</string>
+    <string name="top_settings">Pengaturan</string>
+    <string name="card_region">JOHTO REGION</string>
+    <string name="card_party_label">Party kamu</string>
+    <string name="card_open_apps">APLIKASI</string>
+
+    <!-- Home status -->
+    <string name="status_loading">Memuat aplikasi…</string>
+    <string name="status_party_filled">Party %1$d/6 terisi</string>
+    <string name="status_hint">Tahan kartu untuk opsi · Back menutup panel</string>
+    <string name="status_empty_title">PARTY MASIH KOSONG</string>
+    <string name="status_empty_body">Ketuk salah satu slot bertanda + untuk memilih aplikasi favoritmu. Party menampung maksimal 6 aplikasi.</string>
+    <string name="action_pick_apps">PILIH APLIKASI</string>
+
+    <!-- App drawer -->
+    <string name="drawer_title">APLIKASI</string>
+    <string name="drawer_search_hint">Cari aplikasi…</string>
+    <string name="drawer_count">%1$d aplikasi</string>
+    <string name="drawer_empty">Tidak ada aplikasi yang cocok.</string>
+    <string name="drawer_loading">Memuat aplikasi…</string>
+    <string name="drawer_help">Ketuk untuk membuka · ketuk bola untuk party · tahan untuk info aplikasi</string>
+    <string name="drawer_close">Tutup daftar aplikasi</string>
+
+    <!-- Settings -->
+    <string name="settings_title">PENGATURAN</string>
+    <string name="settings_close">Tutup pengaturan</string>
+    <string name="settings_section_home">HOME SCREEN</string>
+    <string name="settings_set_default">Jadikan home screen default</string>
+    <string name="settings_set_default_desc">Buka dialog sistem untuk memilih PokeLauncher sebagai layar utama.</string>
+    <string name="settings_set_default_action">JADIKAN HOME DEFAULT</string>
+    <string name="settings_section_look">TAMPILAN</string>
+    <string name="settings_hide_clock">Tampilkan jam</string>
+    <string name="settings_hide_clock_desc">Jam HeartGold di kiri atas. Saat dimatikan, tombol menu muncul di sana.</string>
+    <string name="settings_columns">Jumlah kolom grid</string>
+    <string name="settings_columns_value">%1$d kolom</string>
+    <string name="settings_layout">Gaya kartu game</string>
+    <string name="settings_layout_cartridge">Kartrid GBA</string>
+    <string name="settings_layout_tile">Kotak ikon</string>
+    <string name="settings_section_about">TENTANG</string>
+    <string name="settings_version">PokeLauncher %1$s</string>
+    <string name="settings_note">Launcher ini tidak menyertakan aset Pokémon berhak cipta. Seluruh ilustrasi, ikon, dan kartrid dibuat dari kode.</string>
+    <string name="settings_fonts">Font: Press Start 2P, DotGothic16, Silkscreen (SIL Open Font License).</string>
+
+    <!-- Menu sheet -->
+    <string name="menu_title">MENU</string>
+    <string name="menu_subtitle">PILIH TINDAKAN</string>
+    <string name="menu_all_apps">Semua aplikasi</string>
+    <string name="menu_settings">Pengaturan</string>
+    <string name="menu_set_default">Jadikan home default</string>
+    <string name="menu_close">Tutup menu</string>
+
+    <!-- App info sheet -->
+    <string name="info_open">BUKA</string>
+    <string name="info_party_add">PARTY +</string>
+    <string name="info_party_remove">KELUARKAN</string>
+    <string name="info_system">INFO SISTEM</string>
+    <string name="info_uninstall">COPOT</string>
+
+    <!-- Dialogs -->
+    <string name="dialog_set_default_title">JADIKAN HOME?</string>
+    <string name="dialog_set_default_body">Pilih PokeLauncher, lalu tekan &quot;Selalu&quot; agar tombol Home membawa Anda kembali ke sini.</string>
+    <string name="dialog_open_settings">BUKA PENGATURAN</string>
+    <string name="dialog_cancel">BATAL</string>
+    <string name="dialog_party_full_title">PARTY PENUH</string>
+    <string name="dialog_party_full_body">Party hanya menampung 6 aplikasi. Keluarkan salah satu dulu, lalu tambahkan yang baru.</string>
+    <string name="dialog_ok">OKE</string>
+
+    <string name="drawer_clear">Hapus pencarian</string>
+    <string name="slot_empty_letter">—</string>
+    <string name="slot_unknown_name">???</string>
+    <string name="slot_level">Lv%1$d</string>
+    <string name="slot_add">Tambah aplikasi ke party</string>
+    <string name="menu">Menu</string>
+    <string name="close">Tutup</string>
+    <string name="back_to_party">Kembali</string>
+    <!-- Content descriptions -->
+    <string name="cd_settings">Buka pengaturan</string>
+    <string name="cd_app_icon">Ikon %1$s</string>
+</resources>

@@ -1,0 +1,4 @@
+# Copy this file to local.properties and point sdk.dir at your Android SDK.
+# Android Studio regenerates local.properties automatically when you open the project,
+# so this step is only needed for command line builds.
+sdk.dir=/path/to/Android/Sdk
