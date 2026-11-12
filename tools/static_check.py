@@ -296,11 +296,66 @@ def check_manifest() -> None:
             errors.append(f"Manifest activity {name} has no matching Kotlin file")
 
 
+def kotlin_files() -> list[str]:
+    """Every Kotlin source file in the app module."""
+    found = []
+    for root, _, files in os.walk(KOTLIN):
+        for name in files:
+            if name.endswith(".kt"):
+                found.append(os.path.join(root, name))
+    return sorted(found)
+
+
+def check_imported_helpers() -> None:
+    """Compose extension helpers must be imported, not used fully qualified.
+
+    ``androidx.compose.foundation.interaction.collectIsPressedAsState(...)``
+    does not resolve: the helper is a member extension on InteractionSource and
+    has to come in through an import.
+    """
+    bad = (
+        "androidx.compose.foundation.interaction.collectIsPressedAsState",
+        "androidx.compose.foundation.interaction.collectIsFocusedAsState",
+        "androidx.compose.foundation.rememberScrollState",
+        "androidx.compose.foundation.verticalScroll",
+    )
+    for path in kotlin_files():
+        text = open(path, encoding="utf-8").read()
+        body = "\n".join(
+            line for line in text.splitlines() if not line.strip().startswith("import ")
+        )
+        for needle in bad:
+            if needle in body:
+                errors.append(
+                    f"{os.path.relpath(path, ROOT)}: {needle} used fully qualified; "
+                    "add the import instead"
+                )
+
+
+def check_experimental_opt_in() -> None:
+    """combinedClickable is @ExperimentalFoundationApi and needs an opt in."""
+    for path in kotlin_files():
+        text = open(path, encoding="utf-8").read()
+        if "combinedClickable(" not in text:
+            continue
+        if "@OptIn(ExperimentalFoundationApi::class)" not in text:
+            errors.append(
+                f"{os.path.relpath(path, ROOT)}: combinedClickable() needs "
+                "@OptIn(ExperimentalFoundationApi::class) and its import"
+            )
+        if "import androidx.compose.foundation.ExperimentalFoundationApi" not in text:
+            errors.append(
+                f"{os.path.relpath(path, ROOT)}: missing ExperimentalFoundationApi import"
+            )
+
+
 def main() -> int:
     check_xml()
     check_resource_refs()
     check_kotlin()
     check_manifest()
+    check_imported_helpers()
+    check_experimental_opt_in()
 
     for warning in warnings:
         print("WARN ", warning)

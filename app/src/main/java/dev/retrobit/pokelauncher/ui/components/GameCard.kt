@@ -2,11 +2,13 @@ package dev.retrobit.pokelauncher.ui.components
 
 import android.graphics.drawable.Drawable
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -96,6 +98,7 @@ fun PartySlotCard(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun CartridgeCard(
     slot: PartySlot,
@@ -107,7 +110,7 @@ private fun CartridgeCard(
 ) {
     val (body, shade) = HgColors.cartridge(slotIndex)
     val interaction = remember { MutableInteractionSource() }
-    val pressed by androidx.compose.foundation.interaction.collectIsPressedAsState(interaction)
+    val pressed by interaction.collectIsPressedAsState()
     val lift by animateDpAsState(if (pressed) 3.dp else 0.dp, label = "cardLift")
     val label = if (slot.installed) slot.label else stringResource(R.string.slot_unknown_name)
 
@@ -220,6 +223,7 @@ private fun CartridgeCard(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TileCard(
     slot: PartySlot,
@@ -229,7 +233,7 @@ private fun TileCard(
     onLongClick: () -> Unit,
 ) {
     val interaction = remember { MutableInteractionSource() }
-    val pressed by androidx.compose.foundation.interaction.collectIsPressedAsState(interaction)
+    val pressed by interaction.collectIsPressedAsState()
     val lift by animateDpAsState(if (pressed) 2.dp else 0.dp, label = "tileLift")
 
     Column(
