@@ -122,8 +122,15 @@ menjalankan `./gradlew assembleDebug` (dan unit test) di runner Ubuntu dengan JD
 mengunggah APK debug sebagai artifact. Untuk membuat build sekali klik:
 
 1. Buka tab **Actions** → **Android build** → **Run workflow**, atau cukup push commit.
-2. Setelah selesai, unduh artifact **pokelauncher-debug** (berisi `app-debug.apk`).
-3. Salin APK ke tablet, izinkan *install unknown apps*, lalu pasang.
+2. Setelah selesai, unduh APK dari salah satu jalur:
+   - artifact **pokelauncher-debug** di halaman run (berisi `app-debug.apk`), atau
+   - URL tetap: `https://github.com/retrobit-dev/pokelauncher/releases/download/apk-latest/pokelauncher-debug.apk`
+     (prerelease `apk-latest` diperbarui otomatis setiap build sukses).
+3. Salin APK ke tablet, izinkan *install unknown apps* (Setelan → Keamanan → Instal aplikasi tak dikenal),
+   lalu pasang.
+
+Build pertama sudah diverifikasi di CI: `BUILD SUCCESSFUL`, unit test `PartyRules` lulus, dan APK
+berisi `classes.dex`, `resources.arsc`, `AndroidManifest.xml`, tiga font pixel, serta ikon adaptive.
 
 Build release yang di-minify bisa dibuat lokal dengan `./gradlew assembleRelease` (butuh
 keystore sendiri).

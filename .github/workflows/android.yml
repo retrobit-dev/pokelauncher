@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -144,6 +144,25 @@ jobs:
             while read -r size date time name; do
               echo "::notice title=apk::$name ($size bytes)"
             done
+
+      # Artifacts live on a blob host that some networks cannot reach, so the
+      # newest APK is also attached to a rolling prerelease with a stable URL:
+      # https://github.com/retrobit-dev/pokelauncher/releases/download/apk-latest/pokelauncher-debug.apk
+      - name: Publish APK as a release asset
+        if: success() && github.event_name != 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          apk=$(find app/build/outputs/apk/debug -name "*.apk" | head -1)
+          cp "$apk" pokelauncher-debug.apk
+          gh release view apk-latest >/dev/null 2>&1 || \
+            gh release create apk-latest \
+              --title "APK debug terbaru" \
+              --notes "APK debug yang dibangun otomatis oleh GitHub Actions dari branch kerja. Unduh app-debug, pasang di tablet, lalu jadikan home default." \
+              --prerelease
+          gh release upload apk-latest pokelauncher-debug.apk --clobber
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v5
