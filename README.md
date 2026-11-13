@@ -104,11 +104,17 @@ HeartGold:
 | Lapisan | Isi |
 | --- | --- |
 | Waktu | Satu hari game = satu hari nyata. Siang 06:00-18:00, malam selebihnya. |
-| Bertani | Bajak tanah, tanam bibit, siram sekali sehari, panen setelah 2 hari. |
-| Membangun | Tebang pohon (kayu), tambang batu, bangun blok, pasang lampu. |
+| Bertani | Bajak tanah, tanam bibit, siram sekali sehari. Tanaman matang setelah **dua kali siram**, bukan dua hari menunggu. |
+| Membangun | Tebang pohon (kayu), tambang batu, bangun blok. Blok yang kamu pasang ikut menutup jalan. |
 | Bertahan | Lapar turun seiring waktu; malam di tempat gelap mengurangi nyawa. |
+| Lampu | LAMPU membuat torch dari 1 batu + 1 serat, lalu memasangnya. Sel yang diterangi tetap terang di malam hari. |
 | Kontrol | Ketuk tujuan — karakter mencari jalur sendiri. Tidak ada joystick. |
 | Launcher | Dekati mesin di depan rumah, ketuk untuk membuka daftar aplikasi. |
+| Simpan | Otomatis: setiap aksi dan setiap menit, ke `filesDir/world.json`. Proses boleh dibunuh kapan saja. |
+
+![Tampilan siang](docs/editor/ingame.png)
+
+![Tampilan malam](docs/editor/ingame-night.png)
 
 Peta awal 80x50 sel (rumah, sawah berpagar, kolam, pohon, mesin) ditulis
 `tools/starter_map.py` ke `app/src/main/assets/tileset/map.json`. Peta yang lebih besar
@@ -122,17 +128,21 @@ app/src/main/java/dev/retrobit/pokelauncher/game/   Kotlin murni, tanpa Android
   MapJson.kt     membaca tileset.json & map.json
   GameClock.kt   jam dinding -> siang/malam
   World.kt       jalan, tambang, bangun, tani, lapar, nyawa
+  WorldState.kt  simpan/muat world sebagai JSON, tanpa Android
   Pathfinder.kt  ketuk-untuk-jalan
   Camera.kt      kamera yang menempel di tepi peta
   Input.kt       ketukan -> sel
+app/src/main/java/dev/retrobit/pokelauncher/data/
+  WorldStore.kt  berkas simpan world.json (tulis-then-rename)
 app/src/main/java/dev/retrobit/pokelauncher/ui/
   WorldCanvas.kt menggambar peta 16px, FilterQuality.None
   GameScreen.kt  HUD jam, nyawa, lapar, persediaan
   GameViewModel.kt menyimpan dunia + jam nyata
 ```
 
-Semua aturan di `game/` bebas Android, jadi diuji di JVM (`WorldTest`, 39 tes) tanpa
-emulator.
+Semua aturan di `game/` bebas Android, jadi diuji di JVM (`WorldTest`, 45 tes) tanpa
+emulator. Gambar di atas dihasilkan `tools/mock_ingame.py` (lihat `--night`), bukan
+tangkapan layar perangkat — HUD-nya blok warna, karena teks aslinya ada di Compose.
 
 ## Fitur launcher
 

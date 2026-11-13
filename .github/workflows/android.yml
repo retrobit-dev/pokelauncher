@@ -51,6 +51,9 @@ jobs:
             node tools/validate_starter_map.js
             node tools/editor_load_test.js
             python3 tools/world_rules_sim.py
+            python3 tools/mock_ingame.py --night
+            python3 tools/mock_ingame.py
+            git diff --exit-code -- docs/editor/ingame.png docs/editor/ingame-night.png
           } 2>&1 | tee checks.log
 
       # Raw job logs live on a blob host that some networks cannot reach, so the
