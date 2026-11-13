@@ -1,6 +1,12 @@
 // Load the real starter map through the real editor code and confirm every
 // layer survives: this is the round trip that decides whether a map authored in
 // the browser looks the same in the app.
+// The editor's own working document (docs/tileset/map.json) is gitignored, so a
+// clean checkout does not have it: this loads app/src/main/assets instead, which
+// is the map that ends up inside the APK.
+const EXPECT_COLS = 80;
+const EXPECT_ROWS = 50;
+
 const fs=require('fs'), path=require('path');
 const ROOT = require('path').resolve(__dirname, '..');
 const src=fs.readFileSync(path.join(ROOT,'editor/app.js'),'utf8');
@@ -18,7 +24,7 @@ const window={innerWidth:2560,innerHeight:1600,devicePixelRatio:1,addEventListen
 const Image=class{set src(v){setTimeout(()=>this.onload&&this.onload(),0)}};
 const fetch=async(u)=>{
  if(u.includes('tileset.json')) return {ok:true,json:async()=>JSON.parse(fs.readFileSync(path.join(ROOT,'docs/tileset/tileset.json'),'utf8'))};
- if(u.includes('map.json')) return {ok:true,json:async()=>JSON.parse(fs.readFileSync(path.join(ROOT,'docs/tileset/map.json'),'utf8'))};
+ if(u.includes('map.json')) return {ok:true,json:async()=>JSON.parse(fs.readFileSync(path.join(ROOT,'app/src/main/assets/tileset/map.json'),'utf8'))};
  return {ok:false,json:async()=>({})};
 };
 const m=new Function('document','window','Image','fetch','console','setTimeout','clearTimeout',
@@ -30,12 +36,12 @@ m.boot().then(()=>{
   function check(l,a,e){const ok=JSON.stringify(a)===JSON.stringify(e);if(!ok)bad++;
     console.log(`  ${ok?'ok  ':'FAIL'}  ${l}${ok?'':`  (${JSON.stringify(a)} != ${JSON.stringify(e)})`}`);}
   check('peta termuat', st.loadedMap, true);
-  check('ukuran 80x50', [st.cols,st.rows], [80,50]);
-  const expect = Object.values(JSON.parse(fs.readFileSync(path.join(ROOT,'docs/tileset/map.json'),'utf8')).cells)
+  check('ukuran peta bawaan', [st.cols, st.rows], [EXPECT_COLS, EXPECT_ROWS]);
+  const expect = Object.values(JSON.parse(fs.readFileSync(path.join(ROOT,'app/src/main/assets/tileset/map.json'),'utf8')).cells)
     .reduce((n,c)=>n+Object.keys(c).length,0);
   check('setiap lapisan terbaca', st.cells.size, expect);
   // a tree cell must keep its grass
-  const treeKey=Object.entries(JSON.parse(fs.readFileSync(path.join(ROOT,'docs/tileset/map.json'),'utf8')).cells)
+  const treeKey=Object.entries(JSON.parse(fs.readFileSync(path.join(ROOT,'app/src/main/assets/tileset/map.json'),'utf8')).cells)
     .find(([,c])=>c.object==='tree');
   const [tx,ty]=treeKey[0].split(',').map(Number);
   check('pohon ada', st.cells.get(m.layerKey(tx,ty,'object'))?.name, 'tree');
