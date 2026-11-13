@@ -15,6 +15,8 @@ import dev.retrobit.pokelauncher.game.MapJson
 import dev.retrobit.pokelauncher.game.Pathfinder
 import dev.retrobit.pokelauncher.game.TileSet
 import dev.retrobit.pokelauncher.game.World
+import dev.retrobit.pokelauncher.game.WorldState
+import dev.retrobit.pokelauncher.data.WorldStore
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,6 +42,7 @@ class GameViewModel(context: Context) : ViewModel() {
 
     private val tiles: TileSet = loadTiles()
     private val map: GameMap = loadMap(tiles)
+    private val store = WorldStore(appContext)
 
     private val _state = MutableStateFlow(GameUiState())
     val state: StateFlow<GameUiState> = _state.asStateFlow()
@@ -49,13 +52,19 @@ class GameViewModel(context: Context) : ViewModel() {
         get() = TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60_000
 
     init {
+        val world = World(map, tiles)
+        val clockAtLaunch = currentClock()
+        restoreWorld(world)
+        world.waterDay = dayOf()
+
         _state.value = GameUiState(
             ready = true,
             tiles = tiles,
             map = map,
             atlas = loadAtlas(),
-            world = World(map, tiles),
-            clock = currentClock(),
+            world = world,
+            clock = clockAtLaunch,
+            day = dayOf(),
             camera = Camera(
                 viewWidth = 2560,
                 viewHeight = 1600,
@@ -69,6 +78,29 @@ class GameViewModel(context: Context) : ViewModel() {
 
     private fun currentClock(): GameClock =
         GameClock.fromMillisUtc(System.currentTimeMillis(), utcOffsetMinutes)
+
+    /**
+     * Restores the last save, if it still makes sense for this map.
+     *
+     * A save from an older map version is dropped rather than applied: the map
+     * is authored content, and a player standing where a wall now is would be
+     * stuck. Restoring is silent; losing a field is not worth a dialog.
+     */
+    private fun restoreWorld(world: World) {
+        val json = store.load() ?: return
+        val parsed = WorldState.fromJson(json, world, fallbackDay = dayOf()) ?: return
+        WorldState.restore(parsed.snapshot, world)
+    }
+
+    /** Called after anything that changes the save-worthy world. */
+    private fun persist() {
+        val world = _state.value.world ?: return
+        store.save(WorldState.toJson(WorldState.snapshot(world, dayOf()), System.currentTimeMillis()))
+    }
+
+    /** Whole days since the epoch in local time, the unit crops age in. */
+    private fun dayOf(): Int =
+        ((System.currentTimeMillis() + utcOffsetMinutes * 60_000L) / 86_400_000L).toInt()
 
     private fun loadTiles(): TileSet = runCatching {
         appContext.assets.open("tileset/tileset.json").bufferedReader().use { it.readText() }
@@ -97,18 +129,24 @@ class GameViewModel(context: Context) : ViewModel() {
                 val current = _state.value
                 val clock = currentClock()
                 val world = current.world ?: continue
+                // Watering is once per real day: the day counter the crops use
+                // is the same one the sun uses, so a session cannot water twice.
+                world.waterDay = dayOf()
                 val tick = world.tickSurvival(clock, minutes = 1)
                 _state.value = current.copy(
                     clock = clock,
+                    day = dayOf(),
                     tick = tick,
                     revision = current.revision + 1,
                 )
+                persist()
             }
         }
     }
 
     fun tapCell(cellX: Int, cellY: Int) {
         val current = _state.value
+        current.world?.waterDay = dayOf()
         val world = current.world ?: return
 
         if (cellX == world.playerX && cellY == world.playerY) {
@@ -162,48 +200,128 @@ class GameViewModel(context: Context) : ViewModel() {
     private fun actOn(x: Int, y: Int) {
         val current = _state.value
         val world = current.world ?: return
-        val today = current.clock.minuteOfDay / 1440
+        val today = current.day
 
         // Priority follows what the player is looking at: a ripe crop first,
         // then bare soil to sow, then the block itself to mine.
         val crop = world.cropAt(x, y)
-        val acted = when {
-            crop != null && crop.isRipe(today) -> world.harvest(x, y, today) > 0
-            world.isTilled(x, y) && world.cropAt(x, y) == null -> world.plant(x, y, today)
-            else -> world.mine(x, y) is World.MineResult.Mined
+        val message = when {
+            crop != null && crop.isRipe(today) -> {
+                val yield = world.harvest(x, y, today)
+                if (yield > 0) "Panen +$yield makanan" else null
+            }
+            crop != null ->
+                if (world.water(x, y)) "Padi disiram (${crop.growth + 1}/${World.DAYS_TO_RIPE})" else "Sudah disiram hari ini"
+            world.isTilled(x, y) ->
+                if (world.plant(x, y, today)) "Bibit ditanam" else "Bibit habis"
+            else -> when (val mined = world.mine(x, y)) {
+                is World.MineResult.Mined -> mined.drop?.let { "Dapat ${it.label}" } ?: "Dibersihkan"
+                World.MineResult.TooFar -> "Terlalu jauh"
+                World.MineResult.Nothing -> null
+            }
         }
-        if (!acted) world.mine(x, y) // a last attempt so a plain wall still gives feedback
 
-        _state.value = current.copy(revision = current.revision + 1)
+        _state.value = current.copy(
+            revision = current.revision + 1,
+            message = message ?: current.message,
+            messageId = if (message != null) current.messageId + 1 else current.messageId,
+        )
+        persist()
     }
 
     fun useUnderfoot() {
         val current = _state.value
         val world = current.world ?: return
-        val today = current.clock.minuteOfDay / 1440
+        val today = current.day
         val x = world.playerX
         val y = world.playerY
-        val acted = when {
-            world.cropAt(x, y)?.let { it.isRipe(today) } == true -> world.harvest(x, y, today) > 0
-            world.isTilled(x, y) && world.cropAt(x, y) == null -> world.plant(x, y, today)
-            else -> world.till(x, y)
+        // One button, Harvest Moon style: do the obvious next thing where you
+        // stand, then in front of you. Watering comes before tilling so a crop
+        // is never buried under new soil.
+        val targets = listOf(x to y, x + world.facing.dx to y + world.facing.dy)
+        var message: String? = null
+        for ((tx, ty) in targets) {
+            val crop = world.cropAt(tx, ty)
+            message = when {
+                crop != null && crop.isRipe(today) -> {
+                    val yield = world.harvest(tx, ty, today)
+                    if (yield > 0) "Panen +$yield makanan" else null
+                }
+                crop != null -> if (world.water(tx, ty)) {
+                    "Disiram (${world.cropAt(tx, ty)?.growth ?: 0}/${World.DAYS_TO_RIPE})"
+                } else {
+                    "Sudah disiram hari ini"
+                }
+                world.isTilled(tx, ty) ->
+                    if (world.plant(tx, ty, today)) "Bibit ditanam" else "Bibit habis"
+                world.till(tx, ty) -> "Tanah dibajak"
+                else -> null
+            }
+            if (message != null) break
         }
-        if (!acted) world.eat()
-        _state.value = current.copy(revision = current.revision + 1)
+        _state.value = current.copy(
+            revision = current.revision + 1,
+            message = message ?: current.message,
+            messageId = if (message != null) current.messageId + 1 else current.messageId,
+        )
+        persist()
     }
 
     /** The HUD's MAKAN button. */
     fun eat() {
         val current = _state.value
         if (current.world?.eat() == true) {
-            _state.value = current.copy(revision = current.revision + 1)
+            _state.value = current.copy(
+                revision = current.revision + 1,
+                message = "Kenyang +${World.FOOD_VALUE}",
+                messageId = current.messageId + 1,
+            )
+            persist()
+        } else {
+            _state.value = current.copy(
+                message = if (current.world?.hunger == World.MAX_HUNGER) "Belum lapar" else "Makanan habis",
+                messageId = current.messageId + 1,
+            )
+        }
+    }
+
+    /** The HUD's LAMPU button: craft one from what you mined, then place it. */
+    fun craftLight() {
+        val current = _state.value
+        val world = current.world ?: return
+        if (world.torches > 0) {
+            placeLight()
+            return
+        }
+        if (world.craftTorch()) {
+            _state.value = current.copy(
+                revision = current.revision + 1,
+                message = "Lampu dibuat (batu + serat)",
+                messageId = current.messageId + 1,
+            )
+            persist()
+        } else {
+            _state.value = current.copy(
+                message = "Butuh 1 batu + 1 serat",
+                messageId = current.messageId + 1,
+            )
         }
     }
 
     fun placeLight() {
         val current = _state.value
         if (current.world?.placeLight() == true) {
-            _state.value = current.copy(revision = current.revision + 1)
+            _state.value = current.copy(
+                revision = current.revision + 1,
+                message = "Lampu dipasang",
+                messageId = current.messageId + 1,
+            )
+            persist()
+        } else {
+            _state.value = current.copy(
+                message = if (current.world?.torches == 0) "Tidak punya lampu" else "Sudah ada lampu di sini",
+                messageId = current.messageId + 1,
+            )
         }
     }
 
@@ -211,6 +329,7 @@ class GameViewModel(context: Context) : ViewModel() {
         val current = _state.value
         if (current.world?.build(World.Item.STONE) is World.BuildResult.Built) {
             _state.value = current.copy(revision = current.revision + 1)
+            persist()
         }
     }
 
@@ -277,8 +396,14 @@ data class GameUiState(
     val atlas: ImageBitmap? = null,
     val world: World? = null,
     val clock: GameClock = GameClock.atMinute(12 * 60),
+    /** Whole real days since the epoch; crops age in this unit. */
+    val day: Int = 0,
     val camera: Camera = Camera(viewWidth = 2560, viewHeight = 1600, mapWidth = 16, mapHeight = 16),
     val scale: Int = 3,
     val revision: Int = 0,
     val tick: World.SurvivalTick? = null,
+    /** Last one-line answer from the world, shown briefly by the HUD. */
+    val message: String? = null,
+    /** Changes on every new message, so the HUD can restart its timer. */
+    val messageId: Int = 0,
 )

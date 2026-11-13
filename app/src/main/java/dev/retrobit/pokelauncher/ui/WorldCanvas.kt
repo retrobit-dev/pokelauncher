@@ -44,6 +44,7 @@ fun WorldCanvas(
     facing: Direction,
     scale: Int,
     nightAmount: Float,
+    litAt: (Int, Int) -> Boolean,
     builtAt: (Int, Int) -> Boolean,
     cropsAt: (Int, Int) -> Int,
     onCellTap: (Int, Int) -> Unit,
@@ -116,13 +117,35 @@ fun WorldCanvas(
                 )
             }
 
-            // night: one translucent rectangle, cheaper than tinting every tile
+            // Night: paint the dark once, then punch holes where a torch burns.
+            // Drawing the whole map twice (dark, then lit) would cost more than
+            // the light is worth; a ring of clear pixels reads the same.
             if (nightAmount > 0.01f) {
-                drawRect(color = Color(0xFF0C1533).copy(alpha = nightAmount * 0.62f))
+                val firstVisibleCol = camera.x / GameMap.TILE
+                val firstVisibleRow = camera.y / GameMap.TILE
+                val visibleCols = (size.width / px).toInt() + 2
+                val visibleRows = (size.height / px).toInt() + 2
+                for (y in firstVisibleRow..(firstVisibleRow + visibleRows)) {
+                    if (y < 0 || y >= map.rows) continue
+                    for (x in firstVisibleCol..(firstVisibleCol + visibleCols)) {
+                        if (x < 0 || x >= map.cols) continue
+                        val sx = x * px - camera.x * scale
+                        val sy = y * px - camera.y * scale
+                        val alpha = if (litAt(x, y)) LIT_ALPHA * nightAmount else nightAmount * 0.62f
+                        drawRect(
+                            color = Color(0xFF0C1533).copy(alpha = alpha),
+                            topLeft = Offset(sx, sy),
+                            size = androidx.compose.ui.geometry.Size(px, px),
+                        )
+                    }
+                }
             }
         }
     }
 }
+
+/** Over the lit cells the night is barely there; elsewhere it is a blue dusk. */
+private const val LIT_ALPHA = 0.10f
 
 private fun DrawScope.drawMap(
     map: GameMap,

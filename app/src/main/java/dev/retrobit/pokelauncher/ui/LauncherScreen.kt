@@ -326,8 +326,9 @@ private fun HomeSurface(
             facing = world.facing,
             scale = state.scale,
             nightAmount = 1f - state.clock.daylight,
+            litAt = { x, y -> world.isLit(x, y) },
             builtAt = { x, y -> world.builtAt(x, y) != null },
-            cropsAt = { x, y -> world.cropAt(x, y)?.stage(state.clock.minuteOfDay / 1440) ?: 0 },
+            cropsAt = { x, y -> world.cropAt(x, y)?.stage(state.day) ?: 0 },
             onCellTap = game::tapCell,
             onZoom = game::zoomBy,
             modifier = Modifier.fillMaxSize(),
@@ -344,10 +345,12 @@ private fun HomeSurface(
             food = world.food,
             seeds = world.seeds,
             nearMachine = game.nearMachine(),
+            message = state.message,
+            messageId = state.messageId,
             onOpenLauncher = onOpenLauncher,
             onEat = game::eat,
             onTill = game::useUnderfoot,
-            onPlaceLight = game::placeLight,
+            onPlaceLight = game::craftLight,
         )
     }
 }

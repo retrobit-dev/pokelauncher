@@ -53,12 +53,25 @@ fun GameHud(
     food: Int,
     seeds: Int,
     nearMachine: Boolean,
+    message: String?,
+    messageId: Int,
     onOpenLauncher: () -> Unit,
     onEat: () -> Unit,
     onTill: () -> Unit,
     onPlaceLight: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // A tapped tree must answer immediately, or the world feels dead. The
+    // message is state, the timer only decides when to stop drawing it.
+    var visible by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(messageId) {
+        visible = message
+        if (message != null) {
+            delay(2_200L)
+            visible = null
+        }
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -101,6 +114,20 @@ fun GameHud(
             VerbButton(label = "TANAM", enabled = true, onClick = onTill)
             VerbButton(label = "MAKAN", enabled = food > 0, onClick = onEat)
             VerbButton(label = "LAMPU", enabled = true, onClick = onPlaceLight)
+        }
+
+        visible?.let { line ->
+            Column(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 12.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(HgColors.Paper.copy(alpha = 0.96f))
+                    .border(2.dp, HgColors.Gold, RoundedCornerShape(10.dp))
+                    .padding(horizontal = 12.dp, vertical = 7.dp),
+            ) {
+                Text(text = line, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = HgColors.Ink)
+            }
         }
 
         if (nearMachine) {

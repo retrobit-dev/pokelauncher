@@ -72,7 +72,9 @@ class World(
 
     fun canStand(x: Int, y: Int): Boolean {
         if (!map.inBounds(x, y)) return false
-        if (cleared.contains(GameMap.key(x, y))) return false // mined out: a hole
+        val k = GameMap.key(x, y)
+        if (cleared.contains(k)) return false      // mined out: a hole
+        if (built.containsKey(k)) return false     // your own block is a wall too
         return !map.isSolid(x, y, tiles)
     }
 
@@ -85,6 +87,9 @@ class World(
      * Mining a solid cell removes whatever was on top of it and returns what it
      * was made of. Grass and paths are not minable: stripping the ground would
      * leave a hole in the map, not a resource.
+     *
+     * The result carries the cell, because the UI needs to know *which* block
+     * was hit: tapping a neighbour must not mine the one you stand on.
      */
     fun mine(x: Int, y: Int): MineResult {
         if (!map.inBounds(x, y)) return MineResult.Nothing
@@ -101,7 +106,7 @@ class World(
         val drop = dropFor(tile.name)
         cleared.add(k)
         if (drop != null) inventory[drop] = (inventory[drop] ?: 0) + 1
-        return MineResult.Mined(tile.name, drop)
+        return MineResult.Mined(tile.name, drop, x, y)
     }
 
     /** Places a block in front of the player, spending one material. */
@@ -124,6 +129,21 @@ class World(
     private val built = LinkedHashMap<Long, Item>()
 
     fun builtAt(x: Int, y: Int): Item? = built[GameMap.key(x, y)]
+
+    /**
+     * Makes a torch from a stone and a fibre.
+     *
+     * Crafting is one recipe on purpose: the point is that surviving the night
+     * costs something you gathered, not that the game grows a crafting tree.
+     */
+    fun craftTorch(): Boolean {
+        if ((inventory[Item.STONE] ?: 0) < 1) return false
+        if ((inventory[Item.FIBRE] ?: 0) < 1) return false
+        inventory[Item.STONE] = (inventory[Item.STONE] ?: 0) - 1
+        inventory[Item.FIBRE] = (inventory[Item.FIBRE] ?: 0) - 1
+        inventory[Item.TORCH] = (inventory[Item.TORCH] ?: 0) + 1
+        return true
+    }
 
     /** A light source makes the surrounding cells safe at night. */
     fun placeLight(): Boolean {
@@ -174,10 +194,15 @@ class World(
         return true
     }
 
+    /** Watering is once per day and is what actually grows the crop. */
     fun water(x: Int, y: Int): Boolean {
+        if (distanceTo(x, y) > REACH) return false
         val crop = crops[GameMap.key(x, y)] ?: return false
         if (crop.wateredToday(waterDay)) return false
-        crops[GameMap.key(x, y)] = crop.copy(wateredDay = waterDay)
+        crops[GameMap.key(x, y)] = crop.copy(
+            wateredDay = waterDay,
+            growth = (crop.growth + 1).coerceAtMost(DAYS_TO_RIPE),
+        )
         return true
     }
 
@@ -265,6 +290,70 @@ class World(
 
     fun countOf(item: Item): Int = inventory[item] ?: 0
 
+    // ---------------------------------------------------------------- saving
+
+    /** Torches left in the pack; lights already placed are in [lightCells]. */
+    val torches: Int get() = inventory[Item.TORCH] ?: 0
+
+    fun lightCells(): Set<Long> = lights.toSet()
+    fun clearedCells(): Set<Long> = cleared.toSet()
+    fun tilledCells(): Set<Long> = tilled.toSet()
+    fun builtCells(): Map<Long, Item> = LinkedHashMap(built)
+    fun allCrops(): Map<Long, Crop> = LinkedHashMap(crops)
+
+    /**
+     * Puts a loaded save back into this world.
+     *
+     * Called once, right after construction, so it does not try to be clever
+     * about merging: the caller decides whether a save is worth restoring.
+     * Player health is never restored to zero (that would be a soft lock) and
+     * the light/clear/till sets are copied rather than aliased.
+     */
+    fun restore(
+        playerX: Int,
+        playerY: Int,
+        facing: Direction,
+        health: Int,
+        hunger: Int,
+        wood: Int,
+        stone: Int,
+        fibre: Int,
+        food: Int,
+        seeds: Int,
+        torches: Int,
+        lightCells: Collection<Long>,
+        clearedCells: Collection<Long>,
+        tilledCells: Collection<Long>,
+        builtCells: Map<Long, Item>,
+        crops: Map<Long, Crop>,
+    ) {
+        if (canStand(playerX, playerY)) {
+            this.playerX = playerX
+            this.playerY = playerY
+        }
+        this.facing = facing
+        this.health = health.coerceIn(1, MAX_HEALTH)
+        this.hunger = hunger.coerceIn(0, MAX_HUNGER)
+
+        inventory[Item.WOOD] = wood.coerceAtLeast(0)
+        inventory[Item.STONE] = stone.coerceAtLeast(0)
+        inventory[Item.FIBRE] = fibre.coerceAtLeast(0)
+        inventory[Item.FOOD] = food.coerceAtLeast(0)
+        inventory[Item.SEED] = seeds.coerceAtLeast(0)
+        inventory[Item.TORCH] = torches.coerceAtLeast(0)
+
+        lights.clear()
+        lights.addAll(lightCells)
+        cleared.clear()
+        cleared.addAll(clearedCells)
+        tilled.clear()
+        tilled.addAll(tilledCells)
+        built.clear()
+        built.putAll(builtCells)
+        this.crops.clear()
+        this.crops.putAll(crops)
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private fun dropFor(tileName: String): Item? = when {
@@ -274,19 +363,32 @@ class World(
         else -> null
     }
 
-    data class Crop(val plantedDay: Int, val wateredDay: Int = -1) {
-        fun isRipe(today: Int): Boolean = (today - plantedDay) >= DAYS_TO_RIPE
+    /**
+     * A planted crop.
+     *
+     * `growth` counts watered days, which is the Harvest Moon rule that makes
+     * the watering can a daily job rather than decoration: a crop left dry sits
+     * still. The map editor never writes crops, so they live only here.
+     */
+    data class Crop(val plantedDay: Int, val wateredDay: Int = -1, val growth: Int = 0) {
+        fun isRipe(today: Int): Boolean = growth >= DAYS_TO_RIPE
         fun wateredToday(today: Int): Boolean = wateredDay == today
-        /** Growth stalls if the crop was never watered; days still count. */
-        fun stage(today: Int): Int = ((today - plantedDay).coerceAtLeast(0)).coerceAtMost(DAYS_TO_RIPE)
+        /** 0..DAYS_TO_RIPE, used by the renderer to size the sprout. */
+        fun stage(today: Int): Int = growth.coerceAtMost(DAYS_TO_RIPE)
     }
 
-    enum class Item(val isBlock: Boolean) {
-        WOOD(true), STONE(true), FIBRE(false), FOOD(false), SEED(false), TORCH(true)
+    /** `label` is what the HUD says; keeping it here keeps the text in one place. */
+    enum class Item(val isBlock: Boolean, val label: String) {
+        WOOD(true, "kayu"),
+        STONE(true, "batu"),
+        FIBRE(false, "serat"),
+        FOOD(false, "makanan"),
+        SEED(false, "bibit"),
+        TORCH(true, "lampu"),
     }
 
     sealed interface MineResult {
-        data class Mined(val tile: String, val drop: Item?) : MineResult
+        data class Mined(val tile: String, val drop: Item?, val x: Int = 0, val y: Int = 0) : MineResult
         data object Nothing : MineResult
         data object TooFar : MineResult
     }

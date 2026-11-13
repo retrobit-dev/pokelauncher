@@ -347,7 +347,15 @@ class WorldTest {
         assertTrue(world.plant(x, y, day = 0))
         assertEquals(seeds - 1, world.seeds)
         assertFalse("not ripe the same day", world.cropAt(x, y)!!.isRipe(0))
-        assertTrue(world.cropAt(x, y)!!.isRipe(World.DAYS_TO_RIPE))
+        // ripening counts waterings: a crop left dry never ripens, however long
+        // the player waits. That is the daily job the game is about.
+        assertFalse("waiting does nothing", world.cropAt(x, y)!!.isRipe(999))
+        world.waterDay = 1
+        assertTrue(world.water(x, y))
+        assertFalse("one watering is not enough", world.cropAt(x, y)!!.isRipe(1))
+        world.waterDay = 2
+        assertTrue(world.water(x, y))
+        assertTrue(world.cropAt(x, y)!!.isRipe(2))
     }
 
     @Test
@@ -358,8 +366,12 @@ class WorldTest {
         world.till(x, y)
         world.plant(x, y, day = 0)
         assertEquals("unripe crops cannot be harvested", 0, world.harvest(x, y, day = 0))
+        world.waterDay = 1
+        world.water(x, y)
+        world.waterDay = 2
+        world.water(x, y)
         val food = world.food
-        val yield = world.harvest(x, y, day = World.DAYS_TO_RIPE)
+        val yield = world.harvest(x, y, day = 2)
         assertTrue(yield > 0)
         assertEquals(food + yield, world.food)
         assertNull(world.cropAt(x, y))
@@ -373,8 +385,100 @@ class WorldTest {
         world.waterDay = 5
         assertTrue(world.water(world.playerX, world.playerY))
         assertFalse("a second watering on the same day does nothing", world.water(world.playerX, world.playerY))
+        assertEquals("each watered day is one growth step", 1, world.cropAt(world.playerX, world.playerY)!!.growth)
         world.waterDay = 6
         assertTrue(world.water(world.playerX, world.playerY))
+        assertEquals(2, world.cropAt(world.playerX, world.playerY)!!.growth)
+        world.waterDay = 7
+        world.water(world.playerX, world.playerY)
+        assertEquals("growth stops at ripe", 2, world.cropAt(world.playerX, world.playerY)!!.growth)
+    }
+
+    @Test
+    fun `watering is limited by reach`() {
+        val world = world()
+        // the crop is planted at the player's feet, so a far watering must fail
+        world.till(world.playerX, world.playerY)
+        world.plant(world.playerX, world.playerY, day = 0)
+        world.waterDay = 1
+        assertFalse("cannot water from across the map", world.water(9, 1))
+    }
+
+    @Test
+    fun `a torch costs a stone and a fibre`() {
+        val world = world()
+        val stone = world.stone
+        val fibre = world.fibre
+        assertTrue("materials are in the pack", world.craftTorch())
+        assertEquals(stone - 1, world.stone)
+        assertEquals(fibre - 1, world.fibre)
+        assertEquals(1, world.torches)
+        assertTrue("a torch can then be placed", world.placeLight())
+        assertEquals(0, world.torches)
+        assertTrue("and it lights the cell you stand on", world.isLit(world.playerX, world.playerY))
+        assertFalse("a second torch light on the same cell is refused", world.placeLight())
+    }
+
+    @Test
+    fun `a block you built is a wall, not a doorway`() {
+        val world = world()
+        world.step(Direction.RIGHT)
+        val front = world.facing
+        assertTrue(
+            "the cell ahead must be open before the test means anything",
+            world.canStand(world.playerX + front.dx, world.playerY + front.dy),
+        )
+        assertTrue(world.build(World.Item.STONE) is World.BuildResult.Built)
+        assertFalse("you cannot walk through your own block", world.canStand(world.playerX + front.dx, world.playerY + front.dy))
+        assertFalse("and stepping into it fails", world.step(front))
+    }
+
+    // ---------------------------------------------------------------- saving
+
+    @Test
+    fun `a save survives a round trip`() {
+        val world = world()
+        val x = world.playerX
+        val y = world.playerY
+        world.till(x, y)
+        world.plant(x, y, day = 3)
+        world.waterDay = 3
+        world.water(x, y)
+        world.step(Direction.RIGHT)
+
+        val json = WorldState.toJson(WorldState.snapshot(world, day = 3), nowMillis = 1234L)
+        val loaded = WorldState.fromJson(json, world, fallbackDay = 0)
+        assertNotNull(loaded)
+
+        val fresh = world()
+        WorldState.restore(loaded!!.snapshot, fresh)
+        assertEquals(x + 1, fresh.playerX)
+        assertEquals(world.seeds, fresh.seeds)
+        assertEquals(world.wood, fresh.wood)
+        assertTrue("tilled soil comes back", fresh.isTilled(x, y))
+        assertEquals("the crop comes back watered", 1, fresh.cropAt(x, y)!!.growth)
+        assertEquals(1234L, loaded.savedAt)
+    }
+
+    @Test
+    fun `a save from another map is rejected instead of trapping the player`() {
+        val world = world()
+        val json = WorldState.toJson(
+            WorldState.snapshot(world, day = 0).copy(playerX = 400, playerY = 400),
+            nowMillis = 0L,
+        )
+        assertNull("a player outside the map must not load", WorldState.fromJson(json, world, fallbackDay = 0))
+        assertNull("garbage must not crash", WorldState.fromJson("{not json", world, fallbackDay = 0))
+    }
+
+    @Test
+    fun `a loaded world never starts the player at zero health`() {
+        val world = world()
+        val hurt = WorldState.snapshot(world, day = 0).copy(health = 0, hunger = -5, wood = -3)
+        WorldState.restore(hurt, world)
+        assertEquals(1, world.health)
+        assertEquals(0, world.hunger)
+        assertEquals(0, world.wood)
     }
 
     // ---------------------------------------------------------------- camera

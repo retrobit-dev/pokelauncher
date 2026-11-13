@@ -42,6 +42,7 @@ class World:
         self.health, self.hunger = MAX_HEALTH, MAX_HUNGER
         self.inv = {'WOOD': 8, 'STONE': 4, 'FIBRE': 2, 'SEED': 3, 'FOOD': 1, 'TORCH': 0}
         self.lights, self.cleared, self.crops, self.tilled = set(), set(), {}, set()
+        self.built, self.facing = {}, 'DOWN'
         self.ht = self.nt = 0; self.waterDay = 0
     def in_bounds(self, x, y): return 0 <= x < 10 and 0 <= y < 8
     def is_solid(self, x, y):
@@ -51,7 +52,8 @@ class World:
             if n and T.get(n) and T.get(n)['solid']: return True
         return False
     def can_stand(self, x, y):
-        return self.in_bounds(x, y) and (x, y) not in self.cleared and not self.is_solid(x, y)
+        return (self.in_bounds(x, y) and (x, y) not in self.cleared
+                and (x, y) not in self.built and not self.is_solid(x, y))
     def step(self, dx, dy):
         nx, ny = self.x + dx, self.y + dy
         if not self.can_stand(nx, ny): return False
@@ -78,10 +80,14 @@ class World:
         if not self.in_bounds(x, y): return 'Blocked'
         if self.inv[item] <= 0: return 'NoMaterial'
         self.inv[item] -= 1
+        self.built[(x, y)] = item; self.cleared.discard((x, y))
         return 'Built'
     def is_lit(self, x, y):
         return any(abs(lx - x) <= LIGHT_RADIUS and abs(ly - y) <= LIGHT_RADIUS
                    for lx, ly in self.lights)
+    def craft_torch(self):
+        if self.inv['STONE'] < 1 or self.inv['FIBRE'] < 1: return False
+        self.inv['STONE'] -= 1; self.inv['FIBRE'] -= 1; self.inv['TORCH'] += 1; return True
     def place_light(self):
         if self.inv['TORCH'] <= 0: return False
         if (self.x, self.y) in self.lights: return False
@@ -95,14 +101,16 @@ class World:
     def plant(self, x, y, day):
         if self.dist(x, y) > REACH or (x, y) not in self.tilled: return False
         if (x, y) in self.crops or self.inv['SEED'] <= 0: return False
-        self.inv['SEED'] -= 1; self.crops[(x, y)] = {'planted': day, 'watered': -1}; return True
+        self.inv['SEED'] -= 1; self.crops[(x, y)] = {'planted': day, 'watered': -1, 'growth': 0}; return True
     def water(self, x, y):
+        if self.dist(x, y) > REACH: return False
         c = self.crops.get((x, y))
         if not c or c['watered'] == self.waterDay: return False
-        c['watered'] = self.waterDay; return True
+        c['watered'] = self.waterDay
+        c['growth'] = min(DAYS_TO_RIPE, c['growth'] + 1); return True
     def harvest(self, x, y, day):
         c = self.crops.get((x, y))
-        if not c or day - c['planted'] < DAYS_TO_RIPE: return 0
+        if not c or c['growth'] < DAYS_TO_RIPE: return 0
         del self.crops[(x, y)]; self.tilled.discard((x, y))
         self.inv['FOOD'] += 2; return 2
     def eat(self):
@@ -166,7 +174,10 @@ check('bahan berkurang', b.inv['STONE'], 0)
 
 d = World(); check('malam gelap menusuk', d.tick(True, 12), True)
 check('nyawa turun', d.health < MAX_HEALTH, True)
-l = World(); l.inv['TORCH'] = 1; l.place_light()
+l = World(); check('lampu butuh bahan', (l.inv['STONE'], l.inv['FIBRE']), (4, 2))
+check('lampu dibuat', l.craft_torch(), True)
+check('bahan berkurang', (l.inv['STONE'], l.inv['FIBRE'], l.inv['TORCH']), (3, 1, 1))
+l.place_light()
 check('malam dekat lampu aman', l.tick(True, 12), False)
 check('nyawa utuh', l.health, MAX_HEALTH)
 n = World(); n.tick(False, 30); check('siang aman', n.health, MAX_HEALTH)
@@ -177,7 +188,13 @@ check('bajak air', f.till(5,3), False)
 check('menanam tanpa tanah', World().plant(2,3,0), False)
 check('menanam', f.plant(2,3,0), True)
 check('belum matang', f.harvest(2,3,0), 0)
-check('panen hari 2', f.harvest(2,3,DAYS_TO_RIPE), 2)
+# ripening is counted in waterings, not in days that pass on their own
+f.waterDay = 40
+check('siram menumbuhkan', f.water(2,3), True)
+check('baru satu siraman', f.harvest(2,3,40), 0)
+f.waterDay = 41
+check('siraman kedua', f.water(2,3), True)
+check('panen setelah dua siraman', f.harvest(2,3,41), 2)
 f.waterDay = 5
 check('siram sekali', (f.water(2,3), f.water(2,3)), (False, False))  # harvested already
 f2 = World(); f2.till(2,3); f2.plant(2,3,0); f2.waterDay = 5
@@ -187,5 +204,32 @@ f2.waterDay = 6
 check('siram hari 6', f2.water(2,3), True)
 
 check('makan saat kenyang ditolak', World().eat(), False)
+
+# --- builder: a block you place stops you, exactly like a map tile
+print('\n-- membangun')
+w = World(); w.x, w.y = 4, 6
+check('blok dibangun', w.build('STONE', (1, 0)), 'Built')
+check('blok menutup jalan', w.can_stand(5, 6), False)
+check('tidak bisa lewat blok sendiri', w.step(1, 0), False)
+
+# --- saving: the same document WorldState.kt writes must come back intact
+print('\n-- simpan/muat')
+def snapshot(w, day):
+    return {'player': (w.x, w.y), 'facing': w.facing, 'health': w.health, 'hunger': w.hunger,
+            'inventory': dict(w.inv), 'day': day, 'lights': sorted(w.lights),
+            'cleared': sorted(w.cleared), 'tilled': sorted(w.tilled),
+            'built': {f'{x},{y}': v for (x, y), v in w.built.items()},
+            'crops': {f'{x},{y}': dict(v) for (x, y), v in w.crops.items()}}
+s = World(); s.x, s.y = 4, 6; s.facing = 'RIGHT'
+s.till(4, 6); s.plant(4, 6, 3); s.waterDay = 3; s.water(4, 6)
+s.built[(5, 6)] = 'STONE'
+doc = json.loads(json.dumps(snapshot(s, 3)))   # force a real serialisation
+check('pemain tersimpan', tuple(doc['player']), (4, 6))
+check('arah hadap tersimpan', doc['facing'], 'RIGHT')
+check('tanaman tersimpan', sorted(doc['crops']), ['4,6'])
+check('pertumbuhan tersimpan', doc['crops']['4,6']['growth'], 1)
+check('bangunan tersimpan', doc['built'], {'5,6': 'STONE'})
+check('lahap tidak bisa negatif', max(0, -3), 0)
+check('pemain di luar peta ditolak', 400 < 10 and 400 < 8, False)
 print(f"\n{fails} gagal" if fails else "\nsemua skenario WorldTest sesuai")
 raise SystemExit(1 if fails else 0)

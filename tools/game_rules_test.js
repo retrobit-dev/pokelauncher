@@ -85,8 +85,13 @@ class World {
     if (!this.canStand(nx, ny)) return false;
     this.playerX = nx; this.playerY = ny; return true;
   }
+  craftTorch() {
+    if (this.inventory.STONE < 1 || this.inventory.FIBRE < 1) return false;
+    this.inventory.STONE--; this.inventory.FIBRE--; this.inventory.TORCH++; return true;
+  }
   canStand(x, y) {
     if (!this.map.inBounds(x, y)) return false;
+    if (this.built.has(`${x},${y}`)) return false;
     if (this.cleared.has(`${x},${y}`)) return false;
     return !this.map.isSolid(x, y, this.tiles);
   }
@@ -153,21 +158,23 @@ class World {
     if (this.crops.has(`${x},${y}`)) return false;
     if (this.inventory.SEED <= 0) return false;
     this.inventory.SEED--;
-    this.crops.set(`${x},${y}`, { plantedDay: day, wateredDay: -1 });
+    this.crops.set(`${x},${y}`, { plantedDay: day, wateredDay: -1, growth: 0 });
     return true;
   }
   water(x, y) {
+    if (this.distanceTo(x, y) > REACH) return false;
     const c = this.crops.get(`${x},${y}`);
     if (!c) return false;
     if (c.wateredDay === this.waterDay) return false;
-    this.crops.set(`${x},${y}`, { ...c, wateredDay: this.waterDay });
+    this.crops.set(`${x},${y}`, { ...c, wateredDay: this.waterDay,
+      growth: Math.min(DAYS_TO_RIPE, c.growth + 1) });
     return true;
   }
   harvest(x, y, day) {
     if (this.distanceTo(x, y) > REACH) return 0;
     const c = this.crops.get(`${x},${y}`);
     if (!c) return 0;
-    if (day - c.plantedDay < DAYS_TO_RIPE) return 0;
+    if (c.growth < DAYS_TO_RIPE) return 0;
     this.crops.delete(`${x},${y}`); this.tilled.delete(`${x},${y}`);
     this.inventory.FOOD += 2;
     return 2;
@@ -324,7 +331,10 @@ check('menanam dengan tanah & bibit', f.plant(2, 3, 0), true);
 check('bibit berkurang', f.seeds, seedsBefore - 1);
 check('belum matang hari itu', f.harvest(2, 3, 0), 0);
 const foodBefore = f.food;
-check('panen setelah 2 hari', f.harvest(2, 3, DAYS_TO_RIPE), 2);
+check('menunggu tidak mematangkan', f.harvest(2, 3, 99), 0);
+f.waterDay = 40; check('siraman pertama', f.water(2, 3), true);
+f.waterDay = 41; check('siraman kedua', f.water(2, 3), true);
+check('panen setelah 2 siraman', f.harvest(2, 3, 41), 2);
 check('makanan bertambah', f.food, foodBefore + 2);
 
 const c = new Camera(0, 0, 320, 240, 1600, 1600);
