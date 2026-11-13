@@ -66,6 +66,24 @@ class WorldTest {
     // ---------------------------------------------------------------- parsing
 
     @Test
+    fun `the fixture parses to the map the other tests assume`() {
+        // One test states the fixture's contract, so a broken fixture fails here
+        // with a readable message instead of failing nine unrelated tests.
+        val tiles = MapJson.parseTileSet(tilesJson)
+        assertEquals("the test tileset must parse", 8, tiles.tiles.size)
+
+        val json = mapJson()
+        val map = MapJson.parseMap(json, tiles)
+        assertEquals("10x8 grid expected, json=${json.take(160)}", 10, map.cols)
+        assertEquals(8, map.rows)
+        assertEquals("2,2 ground, json=${json.take(400)}", "grass", map.cell(2, 2)?.ground)
+        assertEquals("2,2 object", "tree", map.cell(2, 2)?.objectTile)
+        assertEquals("2,3 must be open grass", false, map.isSolid(2, 3, tiles))
+        assertEquals("5,3 must be water", true, map.isSolid(5, 3, tiles))
+        assertEquals("5,7 must be open ground so the pond has a bank", false, map.isSolid(5, 7, tiles))
+    }
+
+    @Test
     fun `tileset json keeps names, size and collision`() {
         val tiles = MapJson.parseTileSet(tilesJson)
         assertEquals(16, tiles.tile)

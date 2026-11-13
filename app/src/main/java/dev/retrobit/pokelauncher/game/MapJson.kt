@@ -88,10 +88,14 @@ object MapJson {
             // Current format: {"ground":"grass","object":"tree"}. A cell holds one
             // tile per layer, which is why a tree has lawn under it instead of a
             // hole. Older files stored a single {"name":..,"layer":..}; both load.
-            val known = value.keys().asSequence()
-                .filter { it == "ground" || it == "building" || it == "object" }
-                .count()
-            if (known > 0) {
+            //
+            // Read the layers by asking for them, not by iterating keys(): an
+            // org.json Iterator can only be walked once, so counting the keys
+            // first would consume it and the layers would read as absent.
+            val hasGround = value.has("ground")
+            val hasBuilding = value.has("building")
+            val hasObject = value.has("object")
+            if (hasGround || hasBuilding || hasObject) {
                 var cell = cells[k] ?: Cell()
                 for (layer in listOf("ground", "building", "object")) {
                     val name = value.optString(layer, "")
