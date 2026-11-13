@@ -547,6 +547,68 @@ def check_punch_hole(path: str) -> None:
 
 
 
+def check_tileset() -> None:
+    """The Johto tileset must stay a coherent, loadable atlas.
+
+    A broken index silently ruins a map: the engine would draw the wrong cell
+    or nothing at all. So check the atlas exists, matches its own metadata,
+    every entry sits inside the sheet, no two entries overlap, and a few key
+    tiles have real pixels in them.
+    """
+    import json
+
+    folder = os.path.join(ROOT, "docs", "tileset")
+    atlas_path = os.path.join(folder, "johto-tileset.png")
+    index_path = os.path.join(folder, "tileset.json")
+    if not os.path.exists(atlas_path) or not os.path.exists(index_path):
+        fail("docs/tileset is missing; run python3 tools/tileset/build.py")
+        return
+
+    try:
+        meta = json.load(open(index_path, encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        fail(f"tileset.json is not valid JSON: {error}")
+        return
+
+    decoded = decode_png(atlas_path)
+    if decoded is None:
+        fail("docs/tileset/johto-tileset.png is not an RGBA PNG")
+        return
+    width, height, rows = decoded
+
+    tile = meta.get("tile")
+    tiles = meta.get("tiles", {})
+    if tile != 16:
+        fail(f"tileset tile size must be 16, found {tile}")
+    if len(tiles) < 20:
+        fail(f"tileset should hold the Johto palette, only {len(tiles)} tiles indexed")
+
+    for name in ("grass", "path", "water", "tree", "roof", "wall_door"):
+        if name not in tiles:
+            fail(f"tileset is missing the '{name}' tile")
+
+    seen: dict[tuple[int, int], str] = {}
+    for name, entry in tiles.items():
+        x, y, w, h = entry["x"], entry["y"], entry["w"], entry["h"]
+        if x < 0 or y < 0 or x + w > width or y + h > height:
+            fail(f"tileset '{name}' points outside the {width}x{height} atlas")
+            continue
+        opaque = 0
+        for yy in range(y, y + h):
+            for xx in range(x, x + w):
+                if rows[yy][xx * 4 + 3] == 255:
+                    opaque += 1
+        if opaque == 0:
+            fail(f"tileset '{name}' is fully transparent")
+        for yy in range(y, y + h):
+            for xx in range(x, x + w):
+                other = seen.get((xx, yy))
+                if other is not None:
+                    fail(f"tileset '{name}' overlaps '{other}'")
+                    break
+                seen[(xx, yy)] = name
+
+
 def main() -> int:
     check_gradle()
     check_kotlin_call_sites()
@@ -558,6 +620,7 @@ def main() -> int:
     check_harmonyos_compat()
     check_home_role_flow()
     check_preview_assets()
+    check_tileset()
 
     for problem in problems:
         print("FAIL", problem)
