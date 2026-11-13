@@ -6,11 +6,11 @@ Device reference (Huawei MatePad Mini, 2025):
   body 198.6 x 127.3 x 5.2 mm -> ~4.4 mm bezel all round, 32 MP punch hole
   camera inside the display.
 
-The screen starts empty: a clean paper canvas, ready to be built up step by
-step. Pass `--world` to fill it with the in-game mockup from
-`tools/mock_ingame.py`; that path is kept so the world can come back without
-rewriting the renderer. There is no grid overlay any more: it was a measuring
-tool and it has done its job.
+The screen shows the field the app draws: `tools/mock_ingame.py --field`
+renders the map and the player with no HUD, which is exactly what the home
+screen shows while the HUD is still being rebuilt. Pass `--world` for the full
+in-game mockup with the HUD, or `--blank` for the empty paper canvas. There is
+no grid overlay any more: it was a measuring tool and it has done its job.
 
 The frame is a flat black bezel: no aluminium, no keys, no shadow.
 
@@ -333,7 +333,7 @@ class Device:
     SCREEN_CORNER = dp(10.0)         # panel corner radius: dp, like the device
     PAD = 72
 
-    def __init__(self, w: int, h: int, show_world: bool = False) -> None:
+    def __init__(self, w: int, h: int, show_world: bool = True) -> None:
         self.w, self.h = w, h            # display size in px
         self.show_world = show_world     # False: a blank screen to build on
         self.body_w = w + 2 * self.BEZEL
@@ -356,11 +356,14 @@ class Device:
         self.world = panel
 
     def draw_world(self) -> None:
-        """Copies the in-game mockup onto the panel, scaling to fit.
+        """Copies the field render onto the panel, scaling to fit.
 
         `tools/mock_ingame.py` owns the picture. Loading it instead of copying
-        the layout here means the preview cannot drift from the mockup the
-        README publishes: one renderer, one truth.
+        the layout here means the preview cannot drift from what the README
+        publishes and from what the app draws: one renderer, one truth.
+
+        In-game HUD shots live next to it, so the same code path can put the
+        full HUD back on the tablet by pointing `--world` at them if wanted.
 
         The picture is fitted, not stretched: a 16:10 render fills the panel
         exactly, and anything else would be letterboxed on the page colour
@@ -369,7 +372,9 @@ class Device:
         here too - the render tells the truth about the device.
         """
         here = os.path.dirname(os.path.abspath(__file__))
-        source = os.path.join(here, "..", "docs", "editor", "ingame.png")
+        # The field, not the HUD mockup: the app's home screen is the map seen
+        # through the camera, so a blank paper panel would misrepresent it.
+        source = os.path.join(here, "..", "docs", "editor", "field.png")
         image = None
         if os.path.exists(source):
             try:
@@ -505,12 +510,12 @@ class Device:
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Renders the landscape preview: an empty screen unless --world is passed."""
+    """Renders the landscape preview: the field, unless --blank is passed."""
     argv = list(argv or [])
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     # 2560 x 1600: the MatePad Mini panel in landscape.
-    device = Device(2560, 1600, show_world="--world" in argv)
+    device = Device(2560, 1600, show_world="--blank" not in argv)
     png = device.render().to_png(os.path.join(root, "docs", "preview-tablet.png"))
     print(f"docs/preview-tablet.png ({png // 1024} KB, {device.outer_w}x{device.outer_h})")
 

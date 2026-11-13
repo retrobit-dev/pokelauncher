@@ -16,7 +16,14 @@ from tileset.pixels import Image
 from render_map import read_png
 
 NIGHT = '--night' in sys.argv
-OUT = next((a for a in sys.argv[1:] if a.endswith('.png')), os.path.join(HERE, '..', 'docs', 'editor', 'ingame-night.png' if NIGHT else 'ingame.png'))
+# --field draws only what is on the screen: the map and the player, no HUD.
+# That is what the app's home screen shows right now (SHOW_WORLD is off, so the
+# HUD has not been rebuilt yet), and it is what the tablet preview publishes.
+FIELD = '--field' in sys.argv
+_default = ('field.png' if FIELD else
+            ('ingame-night.png' if NIGHT else 'ingame.png'))
+OUT = next((a for a in sys.argv[1:] if a.endswith('.png')),
+           os.path.join(HERE, '..', 'docs', 'editor', _default))
 
 meta=json.load(open(os.path.join(ROOT,'docs/tileset/tileset.json'))); T=meta['tiles']
 doc=json.load(open(os.path.join(ROOT,'app/src/main/assets/tileset/map.json')))
@@ -127,34 +134,40 @@ def text(img,x,y,s,k,col):
         cx+=4*k
 
 W,H=scale.w,scale.h
-# The MatePad Mini camera sits inside the panel, top-left. GameHud applies
-# WindowInsets.displayCutout, so everything here starts to its right.
-CUTOUT = 116
-panel(scale,CUTOUT,28,470,236)
-text(scale,CUTOUT+28,52,'20:41' if NIGHT else '12:35',7,INK)
-text(scale,CUTOUT+304,58,'MALAM' if NIGHT else 'SIANG',3,RED if NIGHT else GOLD)
-for i in range(10): rect(scale,CUTOUT+82+i*30,112,22,14,RED)
-for i in range(10): rect(scale,CUTOUT+82+i*30,140,22,14,GOLD if i<7 else SHADE)
-rect(scale,CUTOUT+28,172,380,2,SHADE)
-text(scale,CUTOUT+28,192,'1831',4,FAINT)
 
-for i in range(3):
-    panel(scale,28+i*250,H-148,224,120)
-    rect(scale,60+i*250,H-108,160,10,INK)
-    rect(scale,60+i*250,H-84,104,8,FAINT)
+def draw_hud():
+  # The MatePad Mini camera sits inside the panel, top-left. GameHud applies
+  # WindowInsets.displayCutout, so everything here starts to its right.
+  CUTOUT = 116
+  panel(scale,CUTOUT,28,470,236)
+  text(scale,CUTOUT+28,52,'20:41' if NIGHT else '12:35',7,INK)
+  text(scale,CUTOUT+304,58,'MALAM' if NIGHT else 'SIANG',3,RED if NIGHT else GOLD)
+  for i in range(10): rect(scale,CUTOUT+82+i*30,112,22,14,RED)
+  for i in range(10): rect(scale,CUTOUT+82+i*30,140,22,14,GOLD if i<7 else SHADE)
+  rect(scale,CUTOUT+28,172,380,2,SHADE)
+  text(scale,CUTOUT+28,192,'1831',4,FAINT)
 
-# top-right: the menu button that opens settings and the app list
-rect(scale,W-116,28,88,88,INK)
-rect(scale,W-112,32,80,80,PAPER)
-for i in range(3):
-    rect(scale,W-94,54+i*18,44,5,INK)
+  for i in range(3):
+      panel(scale,28+i*250,H-148,224,120)
+      rect(scale,60+i*250,H-108,160,10,INK)
+      rect(scale,60+i*250,H-84,104,8,FAINT)
 
-panel(scale,W-600,H-148,572,120)
-rect(scale,W-572,H-126,76,76,(0x2C,0x24,0x18))
-rect(scale,W-572,H-126,76,5,(0x56,0x84,0x8C))
-rect(scale,W-470,H-116,340,14,INK)
-rect(scale,W-470,H-88,240,9,FAINT)
-rect(scale,W-470,H-66,300,9,FAINT)
+  # top-right: the menu button that opens settings and the app list
+  rect(scale,W-116,28,88,88,INK)
+  rect(scale,W-112,32,80,80,PAPER)
+  for i in range(3):
+      rect(scale,W-94,54+i*18,44,5,INK)
+
+  panel(scale,W-600,H-148,572,120)
+  rect(scale,W-572,H-126,76,76,(0x2C,0x24,0x18))
+  rect(scale,W-572,H-126,76,5,(0x56,0x84,0x8C))
+  rect(scale,W-470,H-116,340,14,INK)
+  rect(scale,W-470,H-88,240,9,FAINT)
+  rect(scale,W-470,H-66,300,9,FAINT)
+
+
+if not FIELD:
+    draw_hud()
 
 scale.to_png(OUT)
 print(OUT, scale.w,'x',scale.h)

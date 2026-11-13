@@ -6,11 +6,11 @@ enam slot "party", app drawer, jam HeartGold, dan setelan tampilan. Seluruh ilus
 
 ![PokeLauncher di MatePad Mini](docs/preview-tablet.png)
 
-> Layar **kosong** di dalam bezel hitam **Huawei MatePad Mini** (8.8", 2560 × 1600, 343 ppi,
+> **Lapangan** di dalam bezel hitam **Huawei MatePad Mini** (8.8", 2560 × 1600, 343 ppi,
 > bezel ~4.4 mm), landscape, di atas latar biru cerah. Gambarnya 2772 × 1812: layar 2560 × 1600,
-> ditambah bezel 34 px dan margin biru 72 px di setiap sisi. Kanvasnya sengaja dikosongkan: UI sedang
-> dibangun ulang tahap demi tahap. Pratinjau desain dari `tools/render_tablet.py`, bukan
-> tangkapan emulator.
+> ditambah bezel 34 px dan margin biru 72 px di setiap sisi. Isinya peta lewat kamera plus sprite
+> pemain, tanpa HUD — HUD belum dibangun ulang, jadi yang ditampilkan hanya yang sudah ada di
+> aplikasi. Pratinjau desain dari `tools/render_tablet.py`, bukan tangkapan emulator.
 
 ### Perilaku di layar besar
 
@@ -298,9 +298,10 @@ python3 tools/preview_server.py --port 9000
 
 Server hanya menyajikan rute di atas; sisa repo tidak bisa diakses.
 
-**Layar sedang kosong.** `python3 tools/render_tablet.py` menggambar kanvas kertas polos;
-`--world` mengembalikan isi dunia lama untuk pembanding. Grid desain sudah dihapus setelah
-selesai dipakai mengukur.
+**Layar berisi lapangan.** `python3 tools/mock_ingame.py --field` menggambar peta + pemain tanpa
+HUD (itu yang dipasang ke panel), lalu `python3 tools/render_tablet.py` membingkainya.
+`--blank` mengembalikan kanvas kertas polos, `--world` memakai mockup in-game lengkap dengan HUD.
+Grid desain sudah dihapus setelah selesai dipakai mengukur.
 
 Punch hole kamera ada di **kiri atas** layar landscape: pada panel portrait hole-nya di sudut
 kanan atas, dan memutar tablet ke landscape (searah jarum jam, tombol volume di atas) membawa

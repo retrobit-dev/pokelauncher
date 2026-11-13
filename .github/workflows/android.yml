@@ -53,7 +53,8 @@ jobs:
             python3 tools/world_rules_sim.py
             python3 tools/mock_ingame.py --night
             python3 tools/mock_ingame.py
-            git diff --exit-code -- docs/editor/ingame.png docs/editor/ingame-night.png
+            python3 tools/mock_ingame.py --field
+            git diff --exit-code -- docs/editor/ingame.png docs/editor/ingame-night.png docs/editor/field.png
             python3 tools/render_tablet.py
             git diff --exit-code -- docs/preview-tablet.png
           } 2>&1 | tee checks.log

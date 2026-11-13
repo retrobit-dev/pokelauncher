@@ -406,12 +406,18 @@ PAD = 72
 
 
 def check_preview_screen(path: str) -> None:
-    """The published shot: bright page, black frame, an empty paper screen.
+    """The published shot: bright page, black frame, and the field on screen.
 
-    The screen is deliberately blank while the UI is rebuilt step by step, so
-    the check is the opposite of the old one: the panel must be one uniform
-    paper colour, opaque edge to edge. A stray tile, a leftover HUD or a
-    half-painted screen shows up here immediately.
+    The panel must show the world, not a uniform colour: the home screen is the
+    map seen through the camera, so a plain panel would be a worse lie than a
+    busy one. Two things are checked instead of "is it empty":
+
+      1. the panel is opaque edge to edge and not one flat colour;
+      2. it contains the grass palette the tileset actually uses, which a blank
+         paper panel and a half-painted screen both fail.
+
+    The HUD is deliberately absent while it is rebuilt: only the field is on
+    screen, and this check does not demand widgets the app has not drawn yet.
     """
     decoded = decode_png(path)
     if decoded is None:
@@ -438,8 +444,9 @@ def check_preview_screen(path: str) -> None:
     if sum(frame[:3]) > 120:
         fail(f"the bezel should be black, found {frame[:3]} just outside the panel")
 
-    # 3. the panel: empty paper, opaque, nothing else. Wide enough to catch a
-    # panel, a sprite, a grid line or a leftover strip.
+    # 3. the panel: opaque, and actually showing the field. Sample a grid of
+    # points; a blank panel returns one colour, a field returns grass and path.
+    seen = {}
     for fy in (0.1, 0.3, 0.5, 0.7, 0.9):
         for fx in (0.1, 0.3, 0.5, 0.7, 0.9):
             x = panel_x + int(PANEL[0] * fx)
@@ -448,9 +455,52 @@ def check_preview_screen(path: str) -> None:
             if sample[3] != 255:
                 fail(f"the panel is transparent at {x},{y}; the screen must be opaque")
                 return
-            if max(abs(sample[i] - PAPER_CMYK[i]) for i in range(3)) > 6:
-                fail(f"the screen should be empty HgColors.Paper, found {sample[:3]} at {x},{y}")
-                return
+            seen[sample[:3]] = seen.get(sample[:3], 0) + 1
+    if len(seen) < 3:
+        fail(f"the panel is {len(seen)} colour(s), so the field is not being drawn; "
+             "run tools/mock_ingame.py --field before rendering the tablet")
+
+    # 3b. grass must be on screen: this is the tileset's lawn, and it is what
+    # separates a real field render from any other picture in the frame. The
+    # colours come from tools/tileset/palette.py, not from guessing.
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    from tileset import palette as P
+
+    grass = {P.GRASS_1, P.GRASS_2, P.GRASS_3, P.GRASS_DARK, P.GRASS_LIGHT}
+
+    def near(sample, target, tol=20) -> bool:
+        return max(abs(sample[i] - target[i]) for i in range(3)) <= tol
+
+    hits = 0
+    for fy in range(4, 96, 4):
+        for fx in range(3, 97, 3):
+            x = panel_x + PANEL[0] * fx // 100
+            y = panel_y + PANEL[1] * fy // 100
+            sample = pixel(x, y)
+            if any(near(sample[:3], g) for g in grass):
+                hits += 1
+    if hits < 200:
+        fail(f"only {hits} grass samples on the panel; the field render is missing")
+
+    # 3c. the player sprite is drawn. A 16px sprite scaled into the panel is a
+    # few dozen pixels across, so sampling on a coarse grid would miss it:
+    # scan for a solid run of shirt red instead.
+    red = (0xC5, 0x3A, 0x2D)
+    found = False
+    for y in range(panel_y + 4, panel_y + PANEL[1] - 4, 3):
+        run = 0
+        for x in range(panel_x + 4, panel_x + PANEL[0] - 4, 3):
+            if near(pixel(x, y)[:3], red, 12):
+                run += 1
+                if run >= 3:
+                    found = True
+                    break
+            else:
+                run = 0
+        if found:
+            break
+    if not found:
+        fail("the player sprite is not on the tablet: no shirt red anywhere on the panel")
 
     # 4. and the camera is still there, on top of the screen
     lens = pixel(panel_x + 96, panel_y + 96)
