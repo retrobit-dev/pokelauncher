@@ -17,6 +17,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import dev.retrobit.pokelauncher.game.Camera
 import dev.retrobit.pokelauncher.game.Direction
 import dev.retrobit.pokelauncher.game.GameMap
+import dev.retrobit.pokelauncher.game.PlayerSprite
 import dev.retrobit.pokelauncher.game.TileSet
 import dev.retrobit.pokelauncher.game.TouchInput
 
@@ -38,10 +39,15 @@ fun WorldCanvas(
     map: GameMap,
     tiles: TileSet,
     atlas: ImageBitmap?,
+    /** Walk sheet: 2 frames wide, one row per direction. Null falls back to ink. */
+    playerSheet: ImageBitmap?,
     camera: Camera,
     playerX: Int,
     playerY: Int,
     facing: Direction,
+    /** Alternates each step so the legs move while the player is walking. */
+    stepParity: Boolean,
+    walking: Boolean,
     scale: Int,
     nightAmount: Float,
     litAt: (Int, Int) -> Boolean,
@@ -76,10 +82,11 @@ fun WorldCanvas(
             val px = (16 * scale).toFloat()
             drawMap(map, tiles, atlas, camera, scale, px)
 
-            // the player: a 16px sprite drawn as a simple trainer silhouette
+            // the player: a 16px frame from the walk sheet, drawn at the same
+            // integer scale as the tiles so it never resamples
             val pScreenX = playerX * px - camera.x * scale
             val pScreenY = playerY * px - camera.y * scale
-            drawPlayer(pScreenX, pScreenY, px, facing)
+            drawPlayer(pScreenX, pScreenY, px, facing, stepParity, walking, playerSheet)
 
             // built blocks sit above the map layer
             for ((x, y, _) in map.entries()) {
@@ -215,9 +222,43 @@ private fun DrawScope.drawTile(
     )
 }
 
-private fun DrawScope.drawPlayer(x: Float, y: Float, px: Float, facing: Direction) {
-    // A 16px trainer: hat, face, body, feet. Chunky on purpose; the real sprite
-    // sheet replaces this when the art exists, the proportions are the contract.
+/**
+ * The player, from the walk sheet when it is loaded and from primitives if not.
+ *
+ * The fallback is not decoration: an atlas that failed to decode would otherwise
+ * make the player vanish, and "where am I" is the one thing the screen must
+ * always answer.
+ */
+private fun DrawScope.drawPlayer(
+    x: Float,
+    y: Float,
+    px: Float,
+    facing: Direction,
+    stepParity: Boolean,
+    walking: Boolean,
+    sheet: ImageBitmap?,
+) {
+    if (sheet != null) {
+        // The sheet already carries a left row, generated as a mirror of the
+        // right one, so drawing is a plain blit: no runtime flip, no second
+        // bitmap, and the frame lands on whole pixels like every tile.
+        val column = PlayerSprite.column(walking, stepParity)
+        val row = PlayerSprite.row(facing)
+        drawImage(
+            image = sheet,
+            srcOffset = androidx.compose.ui.unit.IntOffset(
+                PlayerSprite.frameX(column), PlayerSprite.frameY(row),
+            ),
+            srcSize = androidx.compose.ui.unit.IntSize(PlayerSprite.TILE, PlayerSprite.TILE),
+            dstOffset = androidx.compose.ui.unit.IntOffset(x.toInt(), y.toInt()),
+            dstSize = androidx.compose.ui.unit.IntSize(px.toInt(), px.toInt()),
+            filterQuality = FilterQuality.None,
+        )
+        return
+    }
+
+    // Fallback silhouette: hat, face, body, feet, in the same proportions as
+    // the sheet so the camera reads the same either way.
     val u = px / 16f
     drawRect(Color(0xFF2C2418), Offset(x + 4 * u, y + 2 * u), androidx.compose.ui.geometry.Size(8 * u, 3 * u))
     drawRect(Color(0xFFC53A2D), Offset(x + 3 * u, y + 3 * u), androidx.compose.ui.geometry.Size(10 * u, 2 * u))

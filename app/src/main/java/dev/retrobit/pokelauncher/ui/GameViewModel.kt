@@ -49,6 +49,13 @@ class GameViewModel(context: Context) : ViewModel() {
     val state: StateFlow<GameUiState> = _state.asStateFlow()
 
     private var walkJob: Job? = null
+
+    /**
+     * Bumped on every new walk. A cancelled job clears the walk flags in its
+     * `finally`, and cancellation is cooperative: without this token that
+     * cleanup could land after the replacement job started and stop its legs.
+     */
+    private var walkToken = 0
     private var cameraJob: Job? = null
     private var rig: CameraRig? = null
     private val utcOffsetMinutes: Int
@@ -75,6 +82,7 @@ class GameViewModel(context: Context) : ViewModel() {
             tiles = tiles,
             map = map,
             atlas = loadAtlas(),
+            playerSheet = loadPlayerSheet(),
             world = world,
             clock = clockAtLaunch,
             day = dayOf(),
@@ -179,6 +187,17 @@ class GameViewModel(context: Context) : ViewModel() {
     }.getOrNull()
 
     /**
+     * The walk sheet is optional on purpose: a missing or undecodable sprite
+     * must not stop the world from loading, so the canvas falls back to the
+     * ink silhouette it drew before the art existed.
+     */
+    private fun loadPlayerSheet(): ImageBitmap? = runCatching {
+        appContext.assets.open("sprites/player.png").use { stream ->
+            BitmapFactory.decodeStream(stream)?.asImageBitmap()
+        }
+    }.getOrNull()
+
+    /**
      * The sun moves, hunger drains and the night bites. One tick a minute is
      * enough for all three and costs almost nothing while the tablet idles.
      */
@@ -237,14 +256,27 @@ class GameViewModel(context: Context) : ViewModel() {
         }
         if (path.isEmpty()) return
 
+        val token = ++walkToken
         walkJob = viewModelScope.launch {
-            for ((x, y) in path) {
-                val current = _state.value
-                val w = current.world ?: break
-                val direction = Direction.toward(w.playerX, w.playerY, x, y)
-                if (!w.step(direction)) break // someone blocked us: stop cleanly
-                _state.value = current.copy(revision = current.revision + 1)
-                delay(STEP_MILLIS)
+            try {
+                for ((x, y) in path) {
+                    val current = _state.value
+                    val w = current.world ?: break
+                    val direction = Direction.toward(w.playerX, w.playerY, x, y)
+                    if (!w.step(direction)) break // someone blocked us: stop cleanly
+                    _state.value = current.copy(
+                        revision = current.revision + 1,
+                        walking = true,
+                        stepParity = !current.stepParity,
+                    )
+                    delay(STEP_MILLIS)
+                }
+            } finally {
+                // Also runs when a new tap cancels this job mid-path: the legs
+                // must not be left in mid-stride after the walk is abandoned.
+                if (token == walkToken) {
+                    _state.value = _state.value.copy(walking = false, stepParity = false)
+                }
             }
             onArrived()
         }
@@ -476,6 +508,16 @@ data class GameUiState(
     val viewHeight: Int = 1600,
     val scale: Int = 3,
     val revision: Int = 0,
+    /** Walk sheet, 2 frames x 4 directions; null if the asset is missing. */
+    val playerSheet: ImageBitmap? = null,
+    /**
+     * Flips on every step, so the sprite alternates between its two frames.
+     * Derived from the step counter rather than a wall clock: a timer would
+     * keep the legs moving while the player stands still.
+     */
+    val stepParity: Boolean = false,
+    /** True while a walk is in progress, so frame 0 is used at rest. */
+    val walking: Boolean = false,
     val tick: World.SurvivalTick? = null,
     /** Last one-line answer from the world, shown briefly by the HUD. */
     val message: String? = null,

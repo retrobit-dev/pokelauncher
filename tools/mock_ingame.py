@@ -65,12 +65,15 @@ def rect(img,x,y,w,h,col):
         for xx in range(int(x),int(x+w)):
             if 0<=xx<img.w and 0<=yy<img.h: img.dot(xx,yy,col)
 
+# The player, from the same sheet the app loads: row 1 is DOWN, frame 0 is
+# standing. Drawn from the asset rather than by hand, so the mockup cannot
+# disagree with the game about what the player looks like.
 sp=doc['spawn']; bx,by=sp['x']*PX, sp['y']*PX
-for (dx,dy,w,h,col) in ((4,2,8,3,(0x2C,0x24,0x18)),(3,3,10,2,(0xC5,0x3A,0x2D)),
-                        (5,5,6,3,(0xF2,0xC7,0x9A)),(4,8,8,5,(0x3E,0x5C,0x8A)),
-                        (4,13,3,2,(0x2C,0x24,0x18)),(9,13,3,2,(0x2C,0x24,0x18)),
-                        (6,6,1,1,(0x2C,0x24,0x18)),(9,6,1,1,(0x2C,0x24,0x18))):
-    rect(world,bx+dx,by+dy,w,h,col)
+player=read_png(os.path.join(ROOT,'app/src/main/assets/sprites/player.png'))
+for yy in range(16):
+    for xx in range(16):
+        r,g,b,a=player.px(xx,16+yy)
+        if a: world.dot(bx+xx,by+yy,(r,g,b))
 
 # A planted field: tilled soil with sprouts of three ages, and two torches.
 # Drawn here rather than loaded, because crops are runtime state, not map data.

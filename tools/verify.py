@@ -738,6 +738,62 @@ def check_game_assets() -> None:
         fail("the starter map spawn is outside the map")
 
 
+def check_player_sprite() -> None:
+    """The walk sheet the game loads must match its generator and the code.
+
+    Three things can drift apart silently: the PNG in assets, the tool that
+    draws it, and [PlayerSprite]'s idea of the layout. A wrong row draws the
+    player backwards, which looks fine in a screenshot; a stale PNG looks fine
+    until the next time someone regenerates the palette.
+    """
+    assets = os.path.join(ROOT, "app", "src", "main", "assets", "sprites", "player.png")
+    if not os.path.exists(assets):
+        fail("app/src/main/assets/sprites/player.png is missing; the player would fall back to the silhouette")
+        return
+
+    # The sheet is generated, so it must be byte-identical to a fresh render.
+    import subprocess
+
+    before = open(assets, "rb").read()
+    result = subprocess.run(
+        [sys.executable, os.path.join(ROOT, "tools", "sprites.py"), "--atlas", "C"],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        fail(f"tools/sprites.py --atlas C failed: {result.stderr.strip()[:200]}")
+        return
+    if open(assets, "rb").read() != before:
+        fail("player.png changed when regenerated; commit the regenerated sheet")
+
+    # Layout must agree with PlayerSprite: 2 frames wide, 4 rows tall.
+    head = open(assets, "rb").read(33)
+    if head[:8] != b"\x89PNG\r\n\x1a\n":
+        fail("player.png is not a PNG")
+        return
+    import struct
+    width, height = struct.unpack(">II", head[16:24])
+    if (width, height) != (32, 64):
+        fail(f"player.png is {width}x{height}; PlayerSprite expects 32x64 (2 frames x 4 rows)")
+
+    # The code that reads it must agree on the numbers.
+    sprite = os.path.join(
+        ROOT, "app", "src", "main", "java", "dev", "retrobit", "pokelauncher",
+        "game", "PlayerSprite.kt",
+    )
+    if not os.path.exists(sprite):
+        fail("PlayerSprite.kt is missing; the canvas has nothing to index the sheet with")
+        return
+    text = open(sprite, encoding="utf-8").read()
+    for needle, why in (
+        ("const val FRAMES = 2", "the sheet is 2 frames wide"),
+        ("const val TILE = 16", "frames are one 16px map cell"),
+        ("SHEET_WIDTH = FRAMES * TILE", "width must be derived, not typed twice"),
+        ("SHEET_HEIGHT = 4 * TILE", "there are four directions, so four rows"),
+    ):
+        if needle not in text:
+            fail(f"PlayerSprite.kt should declare {needle!r}: {why}")
+
+
 def main() -> int:
     check_gradle()
     check_kotlin_call_sites()
@@ -751,6 +807,7 @@ def main() -> int:
     check_preview_assets()
     check_tileset()
     check_game_assets()
+    check_player_sprite()
 
     for problem in problems:
         print("FAIL", problem)

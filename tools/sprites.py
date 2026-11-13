@@ -493,6 +493,45 @@ def text(img: Image, x: int, y: int, label: str, scale: int, colour) -> None:
         cx += 6 * scale
 
 
+def mirror(rows: list[list[str]]) -> list[list[str]]:
+    """Flip a side-facing frame, so one drawn direction serves both ways."""
+    return [list(reversed(row)) for row in rows]
+
+
+# Atlas row order. The Kotlin sheet indexes it by Direction.ordinal, so the
+# two must stay in the same order as the enum: UP, DOWN, LEFT, RIGHT.
+ATLAS_ROWS = ("up", "down", "left", "right")
+
+
+def atlas_frames(frames: dict[str, list[list[str]]]) -> dict[str, list[list[str]]]:
+    return {
+        "up": [frames["up_0"], frames["up_1"]],
+        "down": [frames["down_0"], frames["down_1"]],
+        "left": [mirror(frames["side_0"]), mirror(frames["side_1"])],
+        "right": [frames["side_0"], frames["side_1"]],
+    }
+
+
+def atlas(chosen: str = "C") -> Image:
+    """The sheet the game loads: four rows by two frames, 16x16 each.
+
+    Left is the mirror of right rather than hand-drawn: at 16px the two are
+    indistinguishable, and one drawn direction cannot drift out of sync with
+    the other.
+    """
+    frames = atlas_frames(CANDIDATES[chosen][1]())
+    img = Image(2 * W, len(ATLAS_ROWS) * H)
+    for row, key in enumerate(ATLAS_ROWS):
+        for col, rows in enumerate(frames[key]):
+            art = draw(rows)
+            for y in range(H):
+                for x in range(W):
+                    r, g, b, a = art.px(x, y)
+                    if a:
+                        img.dot(col * W + x, row * H + y, (r, g, b))
+    return img
+
+
 def main(argv: list[str]) -> None:
     out_dir = os.path.join(ROOT, "docs", "sprites")
     os.makedirs(out_dir, exist_ok=True)
@@ -502,6 +541,19 @@ def main(argv: list[str]) -> None:
             path = os.path.join(out_dir, f"candidate-{key.lower()}.png")
             img.to_png(path)
             print(f"{path}  {img.w}x{img.h}  {label}")
+        return
+    if "--atlas" in argv:
+        # written to the app assets, not docs: this file is what the APK loads
+        chosen = "C"
+        for i, arg in enumerate(argv):
+            if arg == "--atlas" and i + 1 < len(argv):
+                chosen = argv[i + 1].upper()
+        img = atlas(chosen)
+        path = os.path.join(ROOT, "app", "src", "main", "assets", "sprites",
+                            "player.png")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        img.to_png(path)
+        print(f"{path}  {img.w}x{img.h}  {CANDIDATES[chosen][0]}")
         return
     img = options_sheet()
     path = os.path.join(out_dir, "options.png")

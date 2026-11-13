@@ -153,6 +153,36 @@ lebih kecil dari layar diletakkan di tengah.
 | Resize/zoom | rig diukur ulang, lalu pemain tetap dijaga di dalam pandangan |
 | Uji | 5 tes Kotlin + skenario di `tools/world_rules_sim.py` |
 
+**Sprite pemain**
+
+Pemain digambar dari lembar jalan 32×64 px (`app/src/main/assets/sprites/player.png`):
+**empat baris** (atas, bawah, kiri, kanan — urutannya sama dengan `Direction.ordinal`) dan
+**dua kolom** frame. Satu frame 16×16 px, seukuran sel peta, jadi digambar pada skala bilangan
+bulat yang sama dengan tile dan tidak pernah di-resample.
+
+| Hal | Nilai |
+| --- | --- |
+| Ukuran | 32 × 64 px (2 frame × 4 baris), tiap frame 16 × 16 px |
+| Animasi | Frame 1 hanya dipakai saat berjalan; bergantian tiap langkah, bukan oleh timer |
+| Arah kiri | Cermin dari baris kanan, dibuat saat generate — bukan digambar dua kali |
+| Berhenti | Selalu kembali ke frame 0, termasuk saat jalan dibatalkan ketukan baru |
+| Fallback | Atlas gagal dimuat → siluet tinta lama, pemain tidak pernah hilang |
+
+Lembar ini dihasilkan `tools/sprites.py`, bukan digambar tangan: satu sprite = beberapa baris
+di source, jadi perubahan art muncul sebagai diff yang bisa dibaca. Skrip itu juga menulis
+lembar pembanding `docs/sprites/options.png` (lima kandidat + strip ukuran tampil 1×–6×) dan
+satu PNG per kandidat lewat `--chars`.
+
+```bash
+python3 tools/sprites.py                       # docs/sprites/options.png
+python3 tools/sprites.py --chars               # satu PNG per kandidat
+python3 tools/sprites.py --atlas C             # tulis ulang assets/sprites/player.png
+```
+
+`tools/verify.py` merender ulang atlas dari skrip dan membandingkannya byte demi byte dengan
+yang ada di `assets/`, lalu mencocokkan ukurannya dengan konstanta di `game/PlayerSprite.kt`.
+Sprite yang basi atau berukuran salah jadi gagal build, bukan kejutan di tablet.
+
 **Grid untuk mendesain layar**
 
 Kanvas 2560×1600 px = 853,3×533,3 dp (1 dp = 3 px). Pilih grid-nya sesuai pekerjaan:
@@ -192,6 +222,7 @@ app/src/main/java/dev/retrobit/pokelauncher/data/
   WorldStore.kt  berkas simpan world.json (tulis-then-rename)
 app/src/main/java/dev/retrobit/pokelauncher/ui/
   WorldCanvas.kt menggambar peta 16px, FilterQuality.None
+  PlayerSprite.kt baris/kolom lembar jalan (murni Kotlin, ada unit test)
   GameScreen.kt  HUD jam, nyawa, lapar, persediaan
   GameViewModel.kt menyimpan dunia + jam nyata
 ```
