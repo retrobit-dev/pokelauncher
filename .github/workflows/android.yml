@@ -40,19 +40,45 @@ jobs:
       # map are checked here.
       - name: Check tools, editor and starter map
         run: |
-          python3 tools/verify.py
-          python3 tools/static_check.py
-          python3 tools/kotlin_symbols.py
-          python3 tools/kotlin_calls.py
-          node tools/editor_test.js
-          node tools/game_rules_test.js
-          node tools/validate_starter_map.js
-          node tools/editor_load_test.js
-          python3 tools/world_rules_sim.py
+          set -o pipefail
+          {
+            python3 tools/verify.py
+            python3 tools/static_check.py
+            python3 tools/kotlin_symbols.py
+            python3 tools/kotlin_calls.py
+            node tools/editor_test.js
+            node tools/game_rules_test.js
+            node tools/validate_starter_map.js
+            node tools/editor_load_test.js
+            python3 tools/world_rules_sim.py
+          } 2>&1 | tee checks.log
 
       # Raw job logs live on a blob host that some networks cannot reach, so the
       # compiler output is also emitted as workflow annotations (readable via
       # the REST API) and uploaded as an artifact.
+      # The check step's output is only visible in the raw job log, which the
+      # sandbox cannot download, so surface it the same way as compiler errors.
+      - name: Report check results as annotations
+        if: always()
+        continue-on-error: true
+        run: |
+          python3 - <<'EOF'
+          import pathlib
+
+          log = pathlib.Path("checks.log")
+          if not log.exists():
+              print("::notice title=checks::checks.log missing")
+              raise SystemExit(0)
+          for line in log.read_text(errors="replace").splitlines():
+              clean = line.strip().replace("::", ":").replace("%", "%25")
+              if not clean:
+                  continue
+              level = "error" if ("FAIL" in clean or "problem" in clean or "bermasalah" in clean
+                                  or "Error" in clean) else "notice"
+              print(f"::{level} title=checks::"[:900] + clean[:400])
+
+          EOF
+
       - name: Report compiler errors as annotations
         if: always()
         continue-on-error: true
