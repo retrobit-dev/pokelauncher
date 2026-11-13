@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import dev.retrobit.pokelauncher.game.Camera
+import dev.retrobit.pokelauncher.game.CameraRig
 import dev.retrobit.pokelauncher.game.Direction
 import dev.retrobit.pokelauncher.game.GameClock
 import dev.retrobit.pokelauncher.game.GameMap
@@ -48,6 +49,8 @@ class GameViewModel(context: Context) : ViewModel() {
     val state: StateFlow<GameUiState> = _state.asStateFlow()
 
     private var walkJob: Job? = null
+    private var cameraJob: Job? = null
+    private var rig: CameraRig? = null
     private val utcOffsetMinutes: Int
         get() = TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60_000
 
@@ -56,6 +59,16 @@ class GameViewModel(context: Context) : ViewModel() {
         val clockAtLaunch = currentClock()
         restoreWorld(world)
         world.waterDay = dayOf()
+
+        val rig = CameraRig(
+            viewWidth = 2560,
+            viewHeight = 1600,
+            mapWidth = map.widthPx,
+            mapHeight = map.heightPx,
+            startX = world.playerX * GameMap.TILE,
+            startY = world.playerY * GameMap.TILE,
+        )
+        this.rig = rig
 
         _state.value = GameUiState(
             ready = true,
@@ -74,6 +87,53 @@ class GameViewModel(context: Context) : ViewModel() {
             scale = 3,
         )
         startSurvivalLoop()
+        startCameraLoop()
+    }
+
+    /**
+     * The camera runs on its own clock.
+     *
+     * Walking is stepped (one cell per tick) but the camera is not: at 60 fps a
+     * follow that only moved on a cell boundary would look like a series of
+     * jerks. This loop advances the rig every frame and publishes the window
+     * only when it actually moved, so a still camera costs no recomposition.
+     */
+    private fun startCameraLoop() {
+        cameraJob?.cancel()
+        cameraJob = viewModelScope.launch {
+            while (true) {
+                val current = _state.value
+                val world = current.world
+                val r = rig
+                if (world != null && r != null &&
+                    (current.viewWidth != r.viewWidth || current.viewHeight != r.viewHeight)
+                ) {
+                    r.resize(current.viewWidth, current.viewHeight, map.widthPx, map.heightPx)
+                    r.jumpTo(world.playerX * GameMap.TILE, world.playerY * GameMap.TILE)
+                }
+                val moved = r?.advance(
+                    (world?.playerX ?: 0) * GameMap.TILE,
+                    (world?.playerY ?: 0) * GameMap.TILE,
+                ) ?: false
+                if (moved && r != null) {
+                    _state.value = _state.value.copy(
+                        camera = r.camera(),
+                        revision = _state.value.revision + 1,
+                    )
+                }
+                delay(CAMERA_FRAME_MILLIS)
+            }
+        }
+    }
+
+    /**
+     * The Compose view is the only thing that knows the real panel size, so it
+     * reports it here instead of the rig guessing 2560x1600 forever.
+     */
+    fun onViewportChanged(widthPx: Int, heightPx: Int, scale: Int) {
+        val current = _state.value
+        if (current.viewWidth == widthPx && current.viewHeight == heightPx && current.scale == scale) return
+        _state.value = current.copy(viewWidth = widthPx, viewHeight = heightPx, scale = scale)
     }
 
     private fun currentClock(): GameClock =
@@ -183,8 +243,7 @@ class GameViewModel(context: Context) : ViewModel() {
                 val w = current.world ?: break
                 val direction = Direction.toward(w.playerX, w.playerY, x, y)
                 if (!w.step(direction)) break // someone blocked us: stop cleanly
-                val camera = current.camera.follow(w.playerX * GameMap.TILE, w.playerY * GameMap.TILE)
-                _state.value = current.copy(camera = camera, revision = current.revision + 1)
+                _state.value = current.copy(revision = current.revision + 1)
                 delay(STEP_MILLIS)
             }
             onArrived()
@@ -341,6 +400,13 @@ class GameViewModel(context: Context) : ViewModel() {
         val steps = dev.retrobit.pokelauncher.game.TouchInput.STEPS
         val index = steps.indexOf(current.scale).coerceAtLeast(0) + step
         val next = steps[index.coerceIn(steps.indices)]
+        // A zoomed panel shows fewer map pixels, so the window shrinks with it.
+        rig?.resize(
+            viewWidth = (current.viewWidth * current.scale / next).coerceAtLeast(GameMap.TILE),
+            viewHeight = (current.viewHeight * current.scale / next).coerceAtLeast(GameMap.TILE),
+            mapWidth = map.widthPx,
+            mapHeight = map.heightPx,
+        )
         _state.value = current.copy(scale = next, revision = current.revision + 1)
     }
 
@@ -382,6 +448,9 @@ class GameViewModel(context: Context) : ViewModel() {
 
     companion object {
         const val STEP_MILLIS = 140L
+
+        /** ~60 fps. One frame of camera movement is a few map pixels. */
+        const val CAMERA_FRAME_MILLIS = 16L
     }
 }
 
@@ -402,6 +471,9 @@ data class GameUiState(
     /** Whole real days since the epoch; crops age in this unit. */
     val day: Int = 0,
     val camera: Camera = Camera(viewWidth = 2560, viewHeight = 1600, mapWidth = 16, mapHeight = 16),
+    /** Panel size in pixels, reported by Compose; the rig reads it. */
+    val viewWidth: Int = 2560,
+    val viewHeight: Int = 1600,
     val scale: Int = 3,
     val revision: Int = 0,
     val tick: World.SurvivalTick? = null,

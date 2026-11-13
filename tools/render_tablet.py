@@ -9,7 +9,8 @@ Device reference (Huawei MatePad Mini, 2025):
 The screen starts empty: a clean paper canvas, ready to be built up step by
 step. Pass `--world` to fill it with the in-game mockup from
 `tools/mock_ingame.py`; that path is kept so the world can come back without
-rewriting the renderer.
+rewriting the renderer. There is no grid overlay any more: it was a measuring
+tool and it has done its job.
 
 The frame is a flat black bezel: no aluminium, no keys, no shadow.
 
@@ -332,11 +333,9 @@ class Device:
     SCREEN_CORNER = dp(10.0)         # panel corner radius: dp, like the device
     PAD = 72
 
-    def __init__(self, w: int, h: int, show_world: bool = False,
-                 show_grid: bool = False) -> None:
+    def __init__(self, w: int, h: int, show_world: bool = False) -> None:
         self.w, self.h = w, h            # display size in px
         self.show_world = show_world     # False: a blank screen to build on
-        self.show_grid = show_grid       # True: draw the design grid on top
         self.body_w = w + 2 * self.BEZEL
         self.body_h = h + 2 * self.BEZEL
         self.outer_w = self.body_w + 2 * self.PAD
@@ -345,80 +344,6 @@ class Device:
         self.world: Canvas | None = None
 
     # -- screen content ------------------------------------------------
-    def draw_grid(self, panel: Canvas) -> None:
-        """The design grid, in the same cells as `ui/DesignGrid.kt`.
-
-        40 dp at 3x is 120 px, so the panel holds 21.33 x 13.33 cells and the
-        last column/row is partial - which is exactly what the tablet shows,
-        and worth seeing instead of being surprised by later.
-        """
-        cell = 120                     # 40 dp * 3 px
-        line = rgb("3F5D74")           # every 5th cell: the main measure
-        soft = rgb("6E8AA0")           # 8 dp helper rhythm
-        cool = rgb("5F7F97")           # ordinary cell edges
-        x = 0
-        col = 0
-        while x <= self.w:
-            every = col % 5 == 0
-            panel.rect(x, 0, 3 if every else 2, self.h,
-                       line if every else cool, alpha=0.9 if every else 0.5)
-            x += cell
-            col += 1
-        y = 0
-        row = 0
-        while y <= self.h:
-            every = row % 5 == 0
-            panel.rect(0, y, self.w, 3 if every else 2,
-                       line if every else cool, alpha=0.9 if every else 0.5)
-            y += cell
-            row += 1
-        # 8 dp rhythm, faint
-        step = 24
-        x = 0
-        while x <= self.w:
-            panel.rect(x, 0, 1, self.h, soft, alpha=0.22)
-            x += step
-        y = 0
-        while y <= self.h:
-            panel.rect(0, y, self.w, 1, soft, alpha=0.22)
-            y += step
-        # camera danger box, 64 dp = 192 px
-        panel.rect(0, 0, 192, 192, rgb("C53A2D"), alpha=0.16)
-        panel.rect(0, 0, 192, 192, rgb("C53A2D"), alpha=0.85)
-        panel.rect(2, 2, 188, 4, page := rgb("C53A2D"), alpha=0.85)
-        panel.rect(2, 2, 4, 188, page, alpha=0.85)
-        panel.rect(2, 186, 188, 4, page, alpha=0.85)
-        panel.rect(186, 2, 4, 188, page, alpha=0.85)
-        # Labels every five cells. Numbers are drawn with the 5x7 font, so a
-        # cell can be named ("C3") instead of pointed at.
-        def glyph(text: str, x0: int, y0: int, scale: int, colour) -> None:
-            cx = x0
-            for ch in text:
-                rows_ = FONT.get(ch, FONT[" "])
-                for gy, bits in enumerate(rows_):
-                    for gx, bit in enumerate(bits):
-                        if bit == "1":
-                            panel.rect(cx + gx * scale, y0 + gy * scale,
-                                       scale, scale, colour, alpha=0.95)
-                cx += 6 * scale
-
-        letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        for col in range(len(letters)):
-            gx = col * cell + 8
-            if gx + 18 > self.w:
-                break
-            glyph(letters[col], gx, 212, 3, rgb("3F5D74"))
-        for row in range(40):
-            gy = row * cell + 8
-            if gy + 48 > self.h:
-                break
-            glyph(str(row + 1), 8, gy, 3, rgb("3F5D74"))
-
-        # centre crosshair
-        cx, cy, arm = self.w // 2, self.h // 2, 72
-        panel.rect(cx - arm, cy, 2 * arm, 2, line, alpha=0.9)
-        panel.rect(cx, cy - arm, 2, 2 * arm, line, alpha=0.9)
-
     def draw_blank(self) -> None:
         """A clean, empty screen: the paper colour and nothing else.
 
@@ -427,8 +352,6 @@ class Device:
         visible on its own, instead of hiding a new element inside a busy shot.
         """
         panel = Canvas(self.w, self.h, PAPER, alpha=255)
-        if self.show_grid:
-            self.draw_grid(panel)
         self.round_panel(panel)
         self.world = panel
 
@@ -587,8 +510,7 @@ def main(argv: list[str] | None = None) -> None:
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     # 2560 x 1600: the MatePad Mini panel in landscape.
-    device = Device(2560, 1600, show_world="--world" in argv,
-                    show_grid="--grid" in argv)
+    device = Device(2560, 1600, show_world="--world" in argv)
     png = device.render().to_png(os.path.join(root, "docs", "preview-tablet.png"))
     print(f"docs/preview-tablet.png ({png // 1024} KB, {device.outer_w}x{device.outer_h})")
 

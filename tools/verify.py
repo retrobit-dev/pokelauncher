@@ -438,16 +438,8 @@ def check_preview_screen(path: str) -> None:
     if sum(frame[:3]) > 120:
         fail(f"the bezel should be black, found {frame[:3]} just outside the panel")
 
-    # 3. the panel is opaque everywhere, and empty apart from the design grid.
-    # The grid is lines on paper, so a pixel is valid when it is paper or a
-    # blue-grey line; anything else (a tile, a panel, a sprite) is a regression.
-    def is_paper_or_grid(sample) -> bool:
-        if max(abs(sample[i] - PAPER_CMYK[i]) for i in range(3)) <= 8:
-            return True
-        # grid lines: blue-ish, darker than the paper, same family in all three
-        r, g, b = sample[0], sample[1], sample[2]
-        return b >= r and b > 100 and r < 200 and (b - r) >= 12
-
+    # 3. the panel: empty paper, opaque, nothing else. Wide enough to catch a
+    # panel, a sprite, a grid line or a leftover strip.
     for fy in (0.1, 0.3, 0.5, 0.7, 0.9):
         for fx in (0.1, 0.3, 0.5, 0.7, 0.9):
             x = panel_x + int(PANEL[0] * fx)
@@ -456,21 +448,9 @@ def check_preview_screen(path: str) -> None:
             if sample[3] != 255:
                 fail(f"the panel is transparent at {x},{y}; the screen must be opaque")
                 return
-            if not is_paper_or_grid(sample):
-                fail(f"the screen should be empty paper (or its grid), found {sample[:3]} at {x},{y}")
+            if max(abs(sample[i] - PAPER_CMYK[i]) for i in range(3)) > 6:
+                fail(f"the screen should be empty HgColors.Paper, found {sample[:3]} at {x},{y}")
                 return
-
-    # 3b. when the grid is on, a cell edge must exist every 40 dp (120 px).
-    # Sampling just inside the panel finds the first vertical line at x=0, so
-    # look for any line pixel in the first cell to prove the grid is drawn.
-    grid_seen = False
-    for offset in range(0, 120, 2):
-        sample = pixel(panel_x + offset, panel_y + 400)
-        if is_paper_or_grid(sample) and sample[:3] != PAPER_CMYK:
-            grid_seen = True
-            break
-    if not grid_seen:
-        fail("the design grid is missing: no cell line found in the first 40 dp column")
 
     # 4. and the camera is still there, on top of the screen
     lens = pixel(panel_x + 96, panel_y + 96)

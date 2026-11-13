@@ -139,6 +139,20 @@ plus pohon 32×32). Untuk menambah tile, atlas digandakan ke 256×256 px (16×16
 Semua skala bilangan bulat supaya piksel tetap tajam di 343 ppi; skala pecahan seperti 2,5×
 akan membuat tile 1 px lebih lebar di sini dan lebih sempit di sana.
 
+**Kamera mengikuti pemain**
+
+`game/CameraRig.kt` adalah kamera follow yang halus: zona mati (pemain bebas bergerak di tengah
+tanpa menggeser layar), gerak maksimum 5 px peta per frame, snap saat sisa jarak ≤ 5 px supaya
+tidak bergetar, dan clamp ke tepi peta sehingga tidak pernah menampilkan ruang kosong. Peta yang
+lebih kecil dari layar diletakkan di tengah.
+
+| Hal | Nilai |
+| --- | --- |
+| Zona mati | 1/6 panel (≈ 427 × 267 px peta) |
+| Kecepatan | ≤ 5 px/frame, loop 16 ms (~60 fps) |
+| Resize/zoom | rig diukur ulang, lalu pemain tetap dijaga di dalam pandangan |
+| Uji | 5 tes Kotlin + skenario di `tools/world_rules_sim.py` |
+
 **Grid untuk mendesain layar**
 
 Kanvas 2560×1600 px = 853,3×533,3 dp (1 dp = 3 px). Pilih grid-nya sesuai pekerjaan:
@@ -253,19 +267,9 @@ python3 tools/preview_server.py --port 9000
 
 Server hanya menyajikan rute di atas; sisa repo tidak bisa diakses.
 
-**Layar sedang memakai design grid.** Render memakai `python3 tools/render_tablet.py --grid`:
-kanvas kertas dengan grid 40 dp (64 × 40 sel), garis bantu 8 dp, kotak merah area kamera, dan
-label kolom A–U / baris 1–13 tiap lima sel.
-
-| Perintah | Hasil |
-| --- | --- |
-| `tools/render_tablet.py` | Kertas kosong tanpa grid. |
-| `tools/render_tablet.py --grid` | Grid desain, dipakai di README. |
-| `tools/render_tablet.py --world` | Isi dunia lama untuk pembanding. |
-
-Di aplikasi grid-nya menyala lewat tombol kecil di sudut kiri atas (di dalam kotak kamera, satu-
-satunya ruang mati di panel). Implementasinya `ui/DesignGrid.kt`, jadi garis yang Anda lihat di
-render dan di tablet berasal dari angka yang sama.
+**Layar sedang kosong.** `python3 tools/render_tablet.py` menggambar kanvas kertas polos;
+`--world` mengembalikan isi dunia lama untuk pembanding. Grid desain sudah dihapus setelah
+selesai dipakai mengukur.
 
 Punch hole kamera ada di **kiri atas** layar landscape: pada panel portrait hole-nya di sudut
 kanan atas, dan memutar tablet ke landscape (searah jarum jam, tombol volume di atas) membawa

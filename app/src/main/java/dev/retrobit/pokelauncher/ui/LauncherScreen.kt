@@ -24,6 +24,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,13 +37,9 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import dev.retrobit.pokelauncher.data.AppEntry
 import dev.retrobit.pokelauncher.ui.components.CloseIcon
-import dev.retrobit.pokelauncher.ui.components.GridIcon
 import dev.retrobit.pokelauncher.ui.components.HgIconButton
 import dev.retrobit.pokelauncher.ui.components.rememberAppIcon
 import dev.retrobit.pokelauncher.ui.screens.AppDrawerScreen
@@ -296,37 +293,45 @@ private fun HomeSurface(
     onOpenMenu: () -> Unit,
 ) {
     if (!SHOW_WORLD) {
-        // Nothing on the screen: no clock, no HUD, no field. The paper fill is
-        // the same colour as the tablet preview, so what you design next lands
-        // on the canvas you are looking at.
-        //
-        // The design grid is the one exception: it is a measuring tool, off by
-        // default, and it exists so the next element can be placed in cells
-        // instead of by eye.
-        var showGrid by rememberSaveable { mutableStateOf(false) }
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(HgColors.Paper),
-        ) {
-            if (showGrid) DesignGrid()
-            // The switch sits in the camera's danger box: it is the only spot
-            // that is guaranteed dead space on this panel, and it stays clear
-            // of everything the grid is meant to help place.
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(if (showGrid) HgColors.Ink else HgColors.PaperShade)
-                    .clickable { showGrid = !showGrid },
-                contentAlignment = Alignment.Center,
-            ) {
-                GridIcon(
-                    tint = if (showGrid) HgColors.Paper else HgColors.InkSoft,
-                    modifier = Modifier.size(20.dp),
-                )
+        // The screen is the map, seen through the camera. No HUD, no field
+        // decorations, no grid: this step is only about whether following the
+        // player feels right on a real panel.
+        val state by game.state.collectAsState()
+        val world = state.world
+        if (world == null || state.atlas == null) {
+            Box(modifier = Modifier.fillMaxSize().background(HgColors.Paper))
+            return
+        }
+
+        // Report the real panel, in map pixels. The rig works in map pixels, so
+        // this is the only place that knows how much of the map fits.
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val density = LocalDensity.current
+            val viewPx = with(density) {
+                ((maxWidth.toPx() / state.scale).toInt().coerceAtLeast(GameMap.TILE)) to
+                    ((maxHeight.toPx() / state.scale).toInt().coerceAtLeast(GameMap.TILE))
             }
+            LaunchedEffect(viewPx.first, viewPx.second, state.scale) {
+                game.onViewportChanged(viewPx.first, viewPx.second, state.scale)
+            }
+
+            WorldCanvas(
+                map = state.map,
+                tiles = state.tiles,
+                atlas = state.atlas,
+                camera = state.camera,
+                playerX = world.playerX,
+                playerY = world.playerY,
+                facing = world.facing,
+                scale = state.scale,
+                nightAmount = 0f,
+                litAt = { false },
+                builtAt = { x, y -> world.builtAt(x, y) != null },
+                cropsAt = { x, y -> world.cropAt(x, y)?.stage(state.day) ?: 0 },
+                onCellTap = game::tapCell,
+                onZoom = game::zoomBy,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
         return
     }

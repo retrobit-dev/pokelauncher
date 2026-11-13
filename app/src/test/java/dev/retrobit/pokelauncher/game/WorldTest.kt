@@ -456,6 +456,74 @@ class WorldTest {
         assertEquals("half the stone is lost", stone / 2, world.stone)
     }
 
+    // ---------------------------------------------------------------- camera follow
+
+    @Test
+    fun `the camera does not move while the player is in the dead zone`() {
+        val rig = CameraRig(
+            viewWidth = 320, viewHeight = 240, mapWidth = 3200, mapHeight = 2400,
+            deadZoneX = 16, deadZoneY = 12,
+        )
+        rig.jumpTo(1600, 1200)
+        val startX = rig.x
+        val startY = rig.y
+        // one cell of slack around the centre must not shift the window at all
+        assertFalse(rig.advance(1600 + 8, 1200 + 6))
+        assertEquals(startX, rig.x)
+        assertEquals(startY, rig.y)
+    }
+
+    @Test
+    fun `the camera catches up smoothly instead of jumping`() {
+        val rig = CameraRig(viewWidth = 320, viewHeight = 240, mapWidth = 3200, mapHeight = 2400)
+        rig.jumpTo(1600, 1200)
+        val before = rig.x
+        // shove the player far right, then count how many frames it takes
+        var frames = 0
+        while (rig.advance(2400, 1200) && frames < 10000) frames++
+        assertTrue("the camera must move", rig.x > before)
+        assertTrue("and it must take more than one frame to do it", frames > 10)
+        assertTrue("never more than maxStep per frame", frames <= 2400 / rig.maxStep + 2)
+    }
+
+    @Test
+    fun `the camera never shows the void outside the map`() {
+        val rig = CameraRig(viewWidth = 320, viewHeight = 240, mapWidth = 3200, mapHeight = 2400)
+        rig.jumpTo(0, 0)
+        repeat(200) { rig.advance(-500, -500) }
+        assertEquals("top-left is the furthest it may go", 0, rig.x)
+        assertEquals(0, rig.y)
+
+        repeat(2000) { rig.advance(9999, 9999) }
+        assertTrue("never past the right edge", rig.x <= 3200 - 320)
+        assertTrue("never past the bottom edge", rig.y <= 2400 - 240)
+        // The target is outside the map here, so all that matters is the clamp.
+        assertEquals("clamped to the last column of cells", 3200 - 320, rig.x)
+        assertEquals("clamped to the last row of cells", 2400 - 240, rig.y)
+    }
+
+    @Test
+    fun `a map smaller than the panel is centred, not pinned to the corner`() {
+        val rig = CameraRig(viewWidth = 2560, viewHeight = 1600, mapWidth = 1280, mapHeight = 800)
+        repeat(50) { rig.advance(1200, 760) }
+        // The whole map fits, so the window must centre it: a negative top-left
+        // corner is what puts the small map in the middle of the panel.
+        assertEquals((1280 - 2560) / 2, rig.x)
+        assertEquals((800 - 1600) / 2, rig.y)
+    }
+
+    @Test
+    fun `resizing the panel keeps the player on screen`() {
+        val rig = CameraRig(viewWidth = 320, viewHeight = 240, mapWidth = 1280, mapHeight = 800)
+        repeat(300) { rig.advance(1200, 760) }
+        assertTrue("the player is visible", rig.x <= 1200 && 1200 <= rig.x + 320)
+
+        rig.resize(viewWidth = 640, viewHeight = 480)
+        assertTrue("still inside the map", rig.x <= 1280 - 640)
+        repeat(300) { rig.advance(1200, 760) }
+        assertTrue("visible after the panel grew", rig.x <= 1200 && 1200 <= rig.x + 640)
+    }
+
     // ---------------------------------------------------------------- saving
 
     @Test

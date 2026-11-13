@@ -143,6 +143,42 @@ class World:
             self.inv[k] -= self.inv[k] // 2
         return True
 
+# --- camera follow, a port of CameraRig.kt
+DEFAULT_MAX_STEP = 5
+class Rig:
+    def __init__(self, vw, vh, mw, mh, dzx=2560 // 6, dzy=1600 // 6):
+        self.vw, self.vh, self.mw, self.mh = vw, vh, mw, mh
+        self.dzx, self.dzy, self.step = dzx, dzy, DEFAULT_MAX_STEP
+        self.x = self.y = 0
+        self.jump(0, 0)
+    def axis_max(self, view, m): return 0 if m <= view else m - view
+    def place(self, value, view, m):
+        if m <= view: return (m - view) // 2
+        return max(0, min(value, m - view))
+    def settle(self, current, target, view, dz):
+        lowest = target - view + max(0, dz)
+        highest = target - max(0, dz)
+        if lowest > highest: return target - view // 2
+        must_see = min(target - view + 1, target)
+        return max(min(lowest, must_see), min(current, max(highest, target - 1)))
+    def toward(self, current, goal):
+        d = goal - current
+        if d == 0: return current
+        if abs(d) <= self.step: return goal
+        return current + (self.step if d > 0 else -self.step)
+    def clamp(self, v, mx): return v if mx <= 0 else max(0, min(v, mx))
+    def advance(self, tx, ty):
+        gx = self.settle(self.x, tx, self.vw, self.dzx)
+        gy = self.settle(self.y, ty, self.vh, self.dzy)
+        nx = self.place(self.toward(self.x, gx), self.vw, self.mw)
+        ny = self.place(self.toward(self.y, gy), self.vh, self.mh)
+        moved = (nx, ny) != (self.x, self.y)
+        self.x, self.y = nx, ny
+        return moved
+    def jump(self, tx, ty):
+        self.x = self.place(tx - self.vw // 2, self.vw, self.mw)
+        self.y = self.place(ty - self.vh // 2, self.vh, self.mh)
+
 fails = 0
 def check(label, actual, expected):
     global fails
@@ -227,6 +263,44 @@ check('nyawa kembali 3', p1.health, 3)
 check('sebagian kayu hilang', p1.inv['WOOD'], wood_before - wood_before // 2)
 
 # --- builder: a block you place stops you, exactly like a map tile
+print('\n-- kamera')
+r = Rig(320, 240, 3200, 2400, dzx=16, dzy=12); r.jump(1600, 1200)
+x0, y0 = r.x, r.y
+check('diam di dead zone', any(r.advance(1600 + i * 16, 1200 + i * 16) for i in range(2)), False)
+check('posisi tetap', (r.x, r.y), (x0, y0))
+
+r2 = Rig(320, 240, 3200, 2400, dzx=16, dzy=12); r2.jump(1600, 1200)
+frames = 0
+while r2.advance(2400, 1200) and frames < 10000: frames += 1
+check('kamera bergerak', r2.x > x0, True)
+check('butuh banyak frame', frames > 10, True)
+check('maks 5 px per frame', frames <= 2400 // DEFAULT_MAX_STEP + 2, True)
+
+r3 = Rig(320, 240, 3200, 2400); r3.jump(0, 0)
+for _ in range(200): r3.advance(-500, -500)
+check('tidak pernah keluar kiri-atas', (r3.x, r3.y), (0, 0))
+for _ in range(2000): r3.advance(9999, 9999)
+check('berhenti di tepi kanan-bawah', (r3.x, r3.y), (3200 - 320, 2400 - 240))
+
+r4 = Rig(2560, 1600, 1280, 800)
+for _ in range(50): r4.advance(1200, 760)
+check('peta lebih kecil: di tengah, bukan di 0', (r4.x, r4.y), ((1280 - 2560) // 2, (800 - 1600) // 2))
+
+# On a panel bigger than the dead zone, the camera stops as soon as the player
+# is inside the still band - not at the map edge. That is the whole point of a
+# dead zone: it is not obliged to push the window all the way.
+r5 = Rig(320, 240, 1280, 800)
+for _ in range(300): r5.advance(1200, 760)
+check('berhenti saat pemain di dalam zona', r5.x > 0 and r5.x <= 1280 - 320, True)
+check('pemain masih di dalam pandangan',
+      r5.x <= 1200 <= r5.x + 320 and r5.y <= 760 <= r5.y + 240, True)
+# resize to a wider panel: the window must still keep the player visible
+r5.vw, r5.vh = 640, 480
+r5.x = r5.place(r5.x, r5.vw, r5.mw); r5.y = r5.place(r5.y, r5.vh, r5.mh)
+check('setelah resize masih di dalam', r5.x <= 1280 - 640 and r5.y <= 800 - 480, True)
+for _ in range(300): r5.advance(1200, 760)
+check('pemain tetap di dalam pandangan setelah resize', r5.x <= 1200 <= r5.x + 640, True)
+
 print('\n-- membangun')
 w = World(); w.x, w.y = 4, 6
 check('blok dibangun', w.build('STONE', (1, 0)), 'Built')
