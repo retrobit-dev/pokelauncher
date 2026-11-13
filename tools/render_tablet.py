@@ -6,11 +6,10 @@ Device reference (Huawei MatePad Mini, 2025):
   body 198.6 x 127.3 x 5.2 mm -> ~4.4 mm bezel all round, 32 MP punch hole
   camera inside the display.
 
-The UI follows the real Compose code path for a wide device (>= 700 dp):
-  JohtoWallpaper + scrim, TopBar, PlayerCard wide branch (action on the right),
-  PartyGrid with GridCells.Fixed(6) centred vertically, wide StatusCard.
-
-The frame is a flat black bezel: no aluminium, no keys, no shadow, no labels.
+The screen itself is empty: a clean home screen filled with the launcher's
+paper colour, no clock, cards, cartridges or wallpaper - exactly what
+LauncherScreen's HomeSurface draws now. The frame is a flat black bezel: no
+aluminium, no keys, no shadow, no labels.
 
 Everything is pure Python (no Pillow) so the script runs anywhere.
 
@@ -30,48 +29,22 @@ def rgb(value: str) -> tuple[int, int, int]:
     return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]
 
 
+# Same colour as HgColors.Paper in Theme.kt: the clean home screen fill.
 PAPER = rgb("FBF3DC")
-PAPER_DEEP = rgb("F3E4BF")
-INK = rgb("3B2F1E")
-INK_SOFT = rgb("6B5B44")
-INK_FAINT = rgb("9A8768")
-GOLD = rgb("E0B84C")
-RED = rgb("C53A2D")
-RED_DEEP = rgb("9A2A20")
-CREAM = rgb("FFFBF0")
-SCREEN_INK = rgb("2C2418")
-SKY_TOP = rgb("9FD4D2")
-SKY_BOTTOM = rgb("F4E7BE")
-SUN = rgb("F6E3A8")
-HILL_FAR = rgb("AFC79A")
-HILL_MID = rgb("8FAF74")
-HILL_NEAR = rgb("7E9C63")
-GRASS = rgb("5F7F4C")
+
 # Punch hole: 32 MP selfie camera. In portrait the hole sits in the top right
 # corner of the 1600 x 2560 panel; turning the tablet the usual way for
 # landscape (counter clockwise, keys on top) brings that corner to the top
 # LEFT of the screen, which is where hands-on photos of the device show it.
 # Measured off orthographic product photography: the hole is ~5.4% of the
-# 1600 px short side, i.e. ~86 px / ~28 dp across, sitting inside the status
-# bar strip with a rim gap of ~12 dp to the two nearest panel edges.
+# 1600 px short side, i.e. ~86 px / ~28 dp across, with a rim gap of ~12 dp to
+# the two nearest panel edges.
 CAMERA_INSET_DP = 12.0    # rim gap between the hole edge and the panel edge
 CAMERA_RADIUS_DP = 14.0   # 28 dp diameter, matching the 86 px hole on device
-# WindowInsets.statusBars height: the hole stays inside this strip, exactly as
-# it does on the device where the selfie camera looks over the status bar.
-STATUS_BAR_DP = 26.0
 
 BEZEL_BLACK = rgb("101112")   # flat black surround
 BEZEL_RIM = rgb("2A2C2E")     # hairline where the glass meets the panel
 BEZEL_DARK = rgb("15181A")
-
-CARTRIDGES = [
-    (rgb("E0B84C"), rgb("C79A2E")),
-    (rgb("C9CFD6"), rgb("A5ADB7")),
-    (rgb("8FB6D8"), rgb("6F95B8")),
-    (rgb("D08070"), rgb("B06152")),
-    (rgb("9DBB86"), rgb("7D9B68")),
-    (rgb("B7A0D4"), rgb("977FB4")),
-]
 
 DP = 3          # the MatePad Mini is 343 ppi: 1 dp == 3 px
 
@@ -268,209 +241,6 @@ FONT = {
 }
 
 
-def ts(base: float) -> int:
-    """Font "scale" is a pixel size: derive it from the dp grid so a preview at
-    any density keeps the same visual proportion as the Compose layout."""
-    return max(2, int(round(base * DP / 2)))
-
-
-def text_width(value: str, scale: int, spacing: int = 1) -> int:
-    return max(0, len(value) * (5 + spacing) * scale - spacing * scale)
-
-
-def draw_text(cv: Canvas, x: float, y: float, value: str, colour,
-              scale: int, spacing: int = 1, alpha: float = 1.0) -> int:
-    if alpha < 1.0:
-        scale = max(1, scale)
-    cx = x
-    for ch in value.upper():
-        glyph = FONT.get(ch, FONT["?"])
-        for row_index, row in enumerate(glyph):
-            for col_index, bit in enumerate(row):
-                if bit == "1":
-                    cv.rect(cx + col_index * scale, y + row_index * scale,
-                            scale, scale, colour, alpha=alpha)
-        cx += (5 + spacing) * scale
-    return int(cx)
-
-
-def fit_scale(value: str, available: float, maximum: int = 5) -> int:
-    for scale in range(maximum, 1, -1):
-        if text_width(value, scale) <= available:
-            return scale
-    return 2
-
-
-# ----------------------------------------------------------- Hg primitives
-def panel(cv: Canvas, x: float, y: float, w: float, h: float, radius: float,
-          fill=PAPER) -> None:
-    """HgPanel: soft shadow, ink outline, paper face."""
-    cv.rect(x + dp(1.3), y + dp(1.7), w, h, (150, 130, 100), radius, alpha=0.55)
-    cv.rect(x, y, w, h, INK, radius)
-    cv.rect(x + dp(0.7), y + dp(0.7), w - dp(1.4), h - dp(1.4), fill, radius - 1)
-
-
-def inset_panel(cv: Canvas, x: float, y: float, w: float, h: float, radius: float) -> None:
-    """HgInset: the recessed label strip under a cartridge."""
-    cv.rect(x, y, w, h, INK_SOFT, radius)
-    cv.rect(x + dp(0.5), y + dp(0.5), w - dp(1.0), h - dp(1.0), PAPER_DEEP, radius - 1)
-
-
-def button(cv: Canvas, x: float, y: float, w: float, h: float, label: str,
-           text_scale: int = 5) -> None:
-    """HgButton: shadow, ink body, paper face, gold inner rule, centred label."""
-    r = dp(10)
-    cv.rect(x, y + dp(1), w, h, (120, 100, 70), r, alpha=0.35)
-    cv.rect(x, y, w, h - dp(1), INK, r)
-    cv.rect(x + dp(0.7), y + dp(0.7), w - dp(1.4), h - dp(2.7), PAPER_DEEP, r - 1)
-    rule = dp(1)
-    cv.rect(x + dp(1.7), y + dp(1.7), w - dp(3.4), rule, GOLD, alpha=0.95)
-    cv.rect(x + dp(1.7), y + h - dp(4.2), w - dp(3.4), rule, GOLD, alpha=0.95)
-    cv.rect(x + dp(1.7), y + dp(1.7), rule, h - dp(5.9), GOLD, alpha=0.95)
-    cv.rect(x + w - dp(2.7), y + dp(1.7), rule, h - dp(5.9), GOLD, alpha=0.95)
-    draw_text(cv, x + (w - text_width(label, text_scale)) / 2,
-              y + (h - dp(1) - 7 * text_scale) / 2, label, INK, text_scale)
-
-
-def pokeball(cv: Canvas, cx: float, cy: float, r: float) -> None:
-    cv.disc(cx, cy, r, INK)
-    cv.disc(cx, cy, r - dp(0.6), RED)
-    inner = r - dp(0.6)
-    for yy in range(int(cy), int(cy + inner) + 1):
-        dy = (yy + 0.5 - cy) / inner
-        if abs(dy) >= 1:
-            continue
-        span = inner * math.sqrt(max(0.0, 1 - dy * dy))
-        cv.rect(cx - span, yy, span * 2, 1, CREAM)
-    cv.rect(cx - r, cy - r * 0.13, r * 2, max(dp(0.8), r * 0.26), INK)
-    cv.disc(cx, cy, r * 0.38, INK)
-    cv.disc(cx, cy, r * 0.25, CREAM)
-
-
-def cartridge_outline(x: float, y: float, w: float, h: float):
-    """Returns spans(ly) for the silhouette used by cartridgePath() in Kotlin."""
-    cut = w * 0.10
-    notch = w * 0.075
-
-    def spans(ly: float):
-        if ly < 0 or ly > h:
-            return None
-        if ly < cut:
-            inset = cut - ly
-            return x + inset, x + w - inset
-        if ly < h * 0.70:
-            return x, x + w
-        if ly < h * 0.78:
-            t = (ly - h * 0.70) / (h * 0.08)
-            inset = notch * t
-            return x + inset, x + w - inset
-        if ly < h * 0.92:
-            return x + notch, x + w - notch
-        t = (ly - h * 0.92) / (h * 0.08)
-        inset = notch + (notch * 0.45 - notch) * t
-        return x + inset, x + w - inset
-
-    return spans
-
-
-def cartridge(cv: Canvas, x: float, y: float, w: float, h: float, body, shade) -> None:
-    """GBA cartridge: clipped top corners, shallow notch at 70%, ridge at the base."""
-    spans = cartridge_outline(x, y, w, h)
-    for yy in range(int(y), int(y + h) + 1):
-        span = spans(yy + 0.5 - y)
-        if span is None or span[1] - span[0] <= 0:
-            continue
-        x0, x1 = span
-        colour = shade if (yy + 0.5 - y) > h * 0.74 else body
-        cv.rect(x0, yy, x1 - x0, 1, colour)
-        edge = min(dp(0.6), (x1 - x0) / 2)
-        cv.rect(x0, yy, edge, 1, INK)
-        cv.rect(x1 - edge, yy, edge, 1, INK)
-
-    top = spans(1.0)
-    bottom = spans(h - 1.0)
-    if top:
-        cv.rect(top[0], y, top[1] - top[0], dp(0.6), INK)
-    if bottom:
-        cv.rect(bottom[0], y + h - dp(0.6), bottom[1] - bottom[0], dp(0.6), INK)
-
-    # glossy highlight band near the top and the grip lines at the base
-    cv.rect(x + w * 0.16, y + h * 0.030, w * 0.68, h * 0.020, CREAM, alpha=0.38)
-    for i in range(2):
-        cv.rect(x + w * 0.42, y + h * 0.945 + i * dp(0.9), w * 0.16, dp(0.4), INK, alpha=0.40)
-
-
-def empty_slot(cv: Canvas, x: float, y: float, w: float, h: float) -> None:
-    """EmptySlotCard(): 40% paper fill, faint ink hairline and a centred plus."""
-    spans = cartridge_outline(x, y, w, h)
-
-    def covered(px: float, py: float) -> bool:
-        span = spans(py - y)
-        return span is not None and span[0] <= px <= span[1]
-
-    for yy in range(int(y), int(y + h) + 1):
-        span = spans(yy + 0.5 - y)
-        if span is None:
-            continue
-        cv.rect(span[0], yy, span[1] - span[0], 1, PAPER_DEEP, alpha=0.40)
-        for xx in range(int(span[0]), int(span[1]) + 1):
-            if not (covered(xx + 0.5 - dp(0.5), yy + 0.5) and covered(xx + 0.5 + dp(0.5), yy + 0.5)
-                    and covered(xx + 0.5, yy + 0.5 - dp(0.5)) and covered(xx + 0.5, yy + 0.5 + dp(0.5))):
-                cv.blend(xx, yy, INK_FAINT, 0.70)
-
-    plus_cx, plus_cy = x + w / 2, y + h / 2
-    arm, thick = dp(7), dp(1.6)
-    cv.rect(plus_cx - thick / 2, plus_cy - arm, thick, arm * 2, INK_FAINT)
-    cv.rect(plus_cx - arm, plus_cy - thick / 2, arm * 2, thick, INK_FAINT)
-
-
-def app_icon(cv: Canvas, cx: float, cy: float, size: float, kind: int, tint) -> None:
-    """Stand-in for the real app icon, drawn in the launcher's own style."""
-    half = size / 2
-    cv.rect(cx - half, cy - half, size, size, CREAM, size * 0.22)
-    if kind == 0:      # camera
-        cv.rect(cx - size * 0.34, cy - size * 0.20, size * 0.68, size * 0.46, SCREEN_INK, size * 0.10)
-        cv.disc(cx, cy + size * 0.03, size * 0.15, tint)
-        cv.disc(cx, cy + size * 0.03, size * 0.08, CREAM)
-        cv.rect(cx - size * 0.10, cy - size * 0.30, size * 0.20, size * 0.10, SCREEN_INK, size * 0.03)
-    elif kind == 1:    # music note
-        cv.disc(cx - size * 0.10, cy + size * 0.22, size * 0.13, tint)
-        cv.rect(cx + size * 0.01, cy - size * 0.30, size * 0.06, size * 0.52, tint)
-        cv.rect(cx + size * 0.01, cy - size * 0.30, size * 0.24, size * 0.08, tint)
-    elif kind == 2:    # compass: needle over a dial
-        cv.disc(cx, cy, size * 0.29, CREAM)
-        cv.disc(cx, cy, size * 0.29, tint, alpha=0.25)
-        cv.rect(cx - size * 0.035, cy - size * 0.20, size * 0.07, size * 0.28, tint, size * 0.03)
-        cv.rect(cx - size * 0.20, cy - size * 0.035, size * 0.28, size * 0.07, tint, size * 0.03)
-        cv.disc(cx, cy, size * 0.05, CREAM)
-    elif kind == 3:    # calculator
-        cv.rect(cx - size * 0.26, cy - size * 0.30, size * 0.52, size * 0.60, tint, size * 0.08)
-        cv.rect(cx - size * 0.19, cy - size * 0.24, size * 0.38, size * 0.16, CREAM, size * 0.04)
-        for row in range(2):
-            for col in range(3):
-                cv.disc(cx - size * 0.14 + col * size * 0.14,
-                        cy + size * 0.06 + row * size * 0.13, size * 0.035, CREAM)
-    elif kind == 4:    # gallery
-        cv.rect(cx - size * 0.28, cy - size * 0.24, size * 0.56, size * 0.48, tint, size * 0.08)
-        cv.disc(cx + size * 0.10, cy - size * 0.08, size * 0.07, CREAM)
-        for i in range(3):
-            cv.rect(cx - size * 0.24 + i * size * 0.16, cy + size * 0.08,
-                    size * 0.13, size * 0.12, CREAM, size * 0.03)
-    else:              # maps: folded map with a pin
-        cv.rect(cx - size * 0.28, cy - size * 0.22, size * 0.56, size * 0.44, tint, size * 0.06)
-        cv.rect(cx - size * 0.06, cy - size * 0.22, size * 0.02, size * 0.44, CREAM)
-        cv.disc(cx + size * 0.08, cy - size * 0.02, size * 0.07, CREAM)
-        cv.rect(cx + size * 0.06, cy + size * 0.02, size * 0.04, size * 0.10, CREAM)
-
-
-def gear(cv: Canvas, cx: float, cy: float, r: float) -> None:
-    for i in range(8):
-        angle = math.radians(i * 45)
-        cv.disc(cx + math.cos(angle) * r * 0.80, cy + math.sin(angle) * r * 0.80, r * 0.20, INK)
-    cv.disc(cx, cy, r * 0.66, INK)
-    cv.disc(cx, cy, r * 0.34, PAPER)
-
-
 # ------------------------------------------------------------------- device
 class Device:
     """One MatePad Mini in landscape, screen inside a black bezel."""
@@ -481,210 +251,18 @@ class Device:
 
     def __init__(self, w: int, h: int) -> None:
         self.w, self.h = w, h            # display size in px
-        self.wide = w >= dp(700)         # same rule as LauncherScreen.kt
         self.outer_w = w + 2 * self.BEZEL
         self.outer_h = h + 2 * self.BEZEL
         self.cv = Canvas(self.outer_w, self.outer_h, BEZEL_BLACK, alpha=0)
 
     # -- screen content ------------------------------------------------
-    def wallpaper(self, cv: Canvas) -> None:
-        cv.gradient_rect(0, self.h, SKY_TOP, SKY_BOTTOM)
-        sun_x, sun_y = self.w * 0.80, self.h * 0.42
-        cv.disc(sun_x, sun_y, self.w * 0.16, SUN, alpha=0.22)
-        cv.disc(sun_x, sun_y, self.w * 0.09, SUN, alpha=0.45)
-        cv.disc(sun_x, sun_y, self.w * 0.055, SUN)
-        for cx, cy, w in ((0.16, 0.22, 0.22), (0.52, 0.15, 0.16),
-                          (0.88, 0.30, 0.13), (0.34, 0.34, 0.10)):
-            cv.ellipse(self.w * cx, self.h * cy, self.w * w * 0.5, self.w * w * 0.17, CREAM, alpha=0.75)
-            cv.ellipse(self.w * cx - self.w * w * 0.20, self.h * cy + self.w * w * 0.03,
-                       self.w * w * 0.28, self.w * w * 0.14, CREAM, alpha=0.75)
-            cv.ellipse(self.w * cx + self.w * w * 0.22, self.h * cy + self.w * w * 0.02,
-                       self.w * w * 0.26, self.w * w * 0.13, CREAM, alpha=0.75)
-        for base, amp, length, colour, phase in (
-            (0.74, 0.055, 1.15, HILL_FAR, 0.4),
-            (0.82, 0.070, 0.85, HILL_MID, 2.1),
-            (0.90, 0.050, 0.62, HILL_NEAR, 4.2),
-        ):
-            points = []
-            for xx in range(0, self.w + 1, 8):
-                angle = (xx / self.w) * 2 * math.pi * length + phase
-                points.append((xx, self.h * base + math.sin(angle) * self.h * amp))
-            for index in range(len(points) - 1):
-                (xa, ya), (xb, yb) = points[index], points[index + 1]
-                steps = max(1, int(xb - xa))
-                for step in range(steps):
-                    t = step / steps
-                    yy = ya + (yb - ya) * t
-                    cv.rect(xa + step, yy, 1, self.h - yy, colour)
-            cv.rect(self.w - 8, points[-1][1], 8, self.h - points[-1][1], colour)
-        cv.rect(0, self.h * 0.965, self.w, self.h * 0.035, GRASS)
-        for i in range(160):
-            gx = (i * 149.0) % self.w
-            for gi in range(6 + (i % 3) * 3):
-                h = dp(2) + (gi * dp(1.2)) % dp(3.4)
-                cv.rect(gx + gi * dp(1), self.h * 0.975 - h, dp(0.8), h, GRASS, alpha=0.85)
-
-    def scrim(self, cv: Canvas) -> None:
-        """Paper scrim from HomeSurface: white at the top, paper at the bottom."""
-        for yy in range(self.h):
-            t = yy / self.h
-            if t < 0.42:
-                alpha = 0.28 * (1 - t / 0.42)
-                colour = (255, 255, 255)
-            elif t < 0.74:
-                continue
-            else:
-                k = (t - 0.74) / 0.26
-                alpha = 0.22 + (0.60 - 0.22) * k
-                colour = PAPER
-            cv.rect(0, yy, self.w, 1, colour, alpha=alpha)
-
-    # -- composables ---------------------------------------------------
-    def top_bar(self, cv: Canvas, margin: float, y: float) -> float:
-        clock_w, clock_h = dp(118), dp(44)
-        panel(cv, margin, y, clock_w, clock_h, dp(12))
-        pokeball(cv, margin + dp(18), y + clock_h / 2, dp(9))
-        draw_text(cv, margin + dp(34), y + clock_h / 2 - 7 * ts(4) / 2, "09:41", INK, ts(4))
-
-        size = dp(46)
-        bx = self.w - margin - size
-        cv.rect(bx, y, size, size, INK, size / 2)
-        cv.rect(bx + dp(0.7), y + dp(0.7), size - dp(1.4), size - dp(1.4), PAPER, size / 2 - 1)
-        gear(cv, bx + size / 2, y + size / 2, dp(4.3))
-        return clock_h
-
-    def party_copy(self, cv: Canvas, x: float, y: float, height: float) -> None:
-        micro, body = ts(2), ts(4)
-        gap = dp(2)
-        block = 7 * micro + gap + 7 * body + dp(3) + dp(3)
-        top = y + (height - block) / 2
-        draw_text(cv, x, top, "JOHTO REGION", RED_DEEP, micro)
-        draw_text(cv, x, top + 7 * micro + gap, "PARTY KAMU", INK, body)
-        ball_y = top + 7 * micro + gap + 7 * body + dp(3) + dp(1.5)
-        for i in range(6):
-            bx = x + dp(1.5) + i * dp(4)
-            if i < 5:
-                pokeball(cv, bx, ball_y, dp(1.5))
-            else:
-                cv.disc(bx, ball_y, dp(1.5), INK_FAINT, alpha=0.22)
-
-    def player_card(self, cv: Canvas, x: float, y: float, width: float) -> float:
-        diorama_w, diorama_h = dp(84), dp(50)
-        if self.wide:
-            # wide branch: one line, action button on the right
-            height = diorama_h + dp(20)
-            panel(cv, x, y, width, height, dp(14))
-            dx, dy = x + dp(10), y + (height - diorama_h) / 2
-            self.diorama(cv, dx, dy, diorama_w, diorama_h)
-            self.party_copy(cv, dx + diorama_w + dp(12), dy, diorama_h)
-            action_w, action_h = dp(230), dp(44)
-            button(cv, x + width - dp(10) - action_w, dy + (diorama_h - action_h) / 2 + dp(1),
-                   action_w, action_h, "APLIKASI", ts(5))
-            return height
-
-        # phone branch: copy row, then a full width action button
-        height = dp(10) + diorama_h + dp(9) + dp(40) + dp(10)
-        panel(cv, x, y, width, height, dp(14))
-        dx, dy = x + dp(10), y + dp(10)
-        self.diorama(cv, dx, dy, diorama_w, diorama_h)
-        self.party_copy(cv, dx + diorama_w + dp(10), dy, diorama_h)
-        button(cv, x + dp(10), y + height - dp(10) - dp(40),
-               width - dp(20), dp(40), "APLIKASI", ts(4))
-        return height
-
-    def diorama(self, cv: Canvas, x: float, y: float, w: float, h: float) -> None:
-        cv.rect(x, y, w, h, CREAM, dp(6))
-        cv.rect(x + dp(0.7), y + dp(0.7), w - dp(1.4), h * 0.62, rgb("BFE3E0"), dp(5))
-        cv.disc(x + w * 0.72, y + h * 0.30, h * 0.15, SUN)
-        for xx in range(int(w) - 6):
-            t = xx / w
-            hill_y = y + h * (0.64 - 0.16 * math.sin(t * math.pi))
-            cv.rect(x + dp(0.7) + xx, hill_y, 1, h - (hill_y - y) - dp(1), HILL_MID)
-            front_y = y + h * (0.80 - 0.10 * math.cos(t * math.pi * 1.4))
-            cv.rect(x + dp(0.7) + xx, front_y, 1, h - (front_y - y) - dp(1), HILL_NEAR)
-
-    def party_grid(self, cv: Canvas, x: float, y: float, width: float,
-                   top: float, bottom: float) -> None:
-        names = ["KAMERA", "MUSIK", "KOMPAS", "KALKULATOR", "GALERI", "PETA"]
-        cols = 6 if self.wide else 3
-        gap = dp(12)
-        grid_w = min(width, dp(1100)) if self.wide else width
-        grid_x = x + (width - grid_w) / 2
-        card_w = (grid_w - gap * (cols - 1)) / cols
-        cart_h = card_w / 0.92
-        label_h = dp(6) * 3
-        card_hh = cart_h + dp(5) + label_h
-        status_h = dp(19) * 3
-        rows = (6 + cols - 1) // cols
-        block_h = rows * card_hh + (rows - 1) * dp(14) + dp(22) + status_h
-
-        if self.wide and bottom - y > block_h:
-            y += (bottom - y - block_h) / 2
-
-        for index in range(6):
-            row, col = divmod(index, cols)
-            cx = grid_x + col * (card_w + gap)
-            cy = y + row * (card_hh + dp(14))
-            strip_y = cy + cart_h + dp(5)
-
-            if index >= 5:
-                empty_slot(cv, cx, cy, card_w, cart_h)
-                inset_panel(cv, cx, strip_y, card_w, label_h, dp(7))
-                empty = "- KOSONG -"
-                draw_text(cv, cx + (card_w - text_width(empty, ts(2))) / 2,
-                          strip_y + (label_h - 7 * ts(2)) / 2, empty, INK_FAINT, ts(2))
-                continue
-
-            body, shade = CARTRIDGES[index]
-            cartridge(cv, cx, cy, card_w, cart_h, body, shade)
-
-            # screen inset with the app glyph
-            sw = card_w * 0.78
-            sx = cx + (card_w - sw) / 2
-            sy = cy + dp(16)
-            sh = sw / 1.15
-            cv.rect(sx, sy, sw, sh, SCREEN_INK, dp(6))
-            cv.rect(sx + dp(0.5), sy + dp(0.5), sw - dp(1), sh - dp(1), CREAM, dp(6), alpha=0.85)
-            app_icon(cv, sx + sw / 2, sy + sh / 2, min(sw, sh) * 0.62, index, body)
-
-            draw_text(cv, cx + dp(8), cy + dp(4), f"LV{3 + index}", INK, ts(2))
-            pokeball(cv, cx + card_w - dp(12), cy + dp(10), dp(4.5))
-
-            inset_panel(cv, cx, strip_y, card_w, label_h, dp(7))
-            label = names[index]
-            scale = fit_scale(label, card_w - dp(16), maximum=ts(3))
-            draw_text(cv, cx + (card_w - text_width(label, scale)) / 2,
-                      strip_y + (label_h - 7 * scale) / 2, label, INK, scale)
-
-        # StatusCard: on wide screens the hint sits on the right edge
-        status_y = y + rows * card_hh + (rows - 1) * dp(14) + dp(22) - card_hh
-        status_y = y + rows * card_hh + (rows - 1) * dp(14) + dp(8)
-        panel(cv, grid_x, status_y, grid_w, status_h, dp(14))
-        pokeball(cv, grid_x + dp(26), status_y + status_h / 2, dp(11))
-        title = "PARTY 5/6 TERISI"
-        hint = "TAHAN KARTU UNTUK OPSI - BACK MENUTUP PANEL"
-        if self.wide:
-            draw_text(cv, grid_x + dp(46), status_y + (status_h - 7 * ts(4)) / 2,
-                      title, INK, ts(4))
-            draw_text(cv, grid_x + grid_w - dp(20) - text_width(hint, ts(2)),
-                      status_y + (status_h - 7 * ts(2)) / 2, hint, INK_SOFT, ts(2))
-        else:
-            draw_text(cv, grid_x + dp(46), status_y + dp(8), title, INK, ts(4))
-            draw_text(cv, grid_x + dp(46), status_y + dp(8) + 7 * ts(4) + dp(2),
-                      hint, INK_SOFT, ts(2))
-
     def draw_screen(self) -> Canvas:
-        cv = Canvas(self.w, self.h, SKY_TOP)
-        self.wallpaper(cv)
-        self.scrim(cv)
+        """Clean home screen: the launcher's paper colour and nothing else.
 
-        margin = dp(16)
-        # LauncherScreen applies statusBarsPadding() around the whole column,
-        # so the first card starts below the status bar strip.
-        y = dp(STATUS_BAR_DP) + dp(10)
-        y += self.top_bar(cv, margin, y) + dp(10)
-        y += self.player_card(cv, margin, y, self.w - margin * 2) + dp(10)
-        self.party_grid(cv, margin, y, self.w - margin * 2, y, self.h - dp(10))
+        Mirrors HomeSurface() in LauncherScreen.kt, which now paints a single
+        flat fill - no wallpaper, clock, party cards or status strip.
+        """
+        cv = Canvas(self.w, self.h, PAPER)
 
         # round the panel corners, like the real OLED cut
         corner = self.SCREEN_CORNER
@@ -756,7 +334,7 @@ def main(argv: list[str] | None = None) -> None:
     """Renders the single landscape preview. No arguments, one output."""
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    # 2560 x 1600 -> 853 dp wide, the wide layout.
+    # 2560 x 1600: the MatePad Mini panel in landscape.
     device = Device(2560, 1600)
     png = device.render().to_png(os.path.join(root, "docs", "preview-tablet.png"))
     print(f"docs/preview-tablet.png ({png // 1024} KB, {device.outer_w}x{device.outer_h})")

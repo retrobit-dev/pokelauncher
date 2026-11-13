@@ -10,9 +10,6 @@
     <string name="card_open_apps">APLIKASI</string>
 
     <!-- Home status -->
-    <string name="status_loading">Memuat aplikasi…</string>
-    <string name="status_party_filled">Party %1$d/6 terisi</string>
-    <string name="status_hint">Tahan kartu untuk opsi · Back menutup panel</string>
     <string name="status_empty_title">PARTY MASIH KOSONG</string>
     <string name="status_empty_body">Ketuk salah satu slot bertanda + untuk memilih aplikasi favoritmu. Party menampung maksimal 6 aplikasi.</string>
     <string name="action_pick_apps">PILIH APLIKASI</string>

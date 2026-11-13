@@ -239,7 +239,13 @@ def check_kotlin() -> None:
             "asImageBitmap": "androidx.compose.ui.graphics.asImageBitmap",
         }
         for symbol, fq in helper_checks.items():
-            if re.search(rf"(?<![\w.]){symbol}\s*[\(<{{]|\b{symbol}\b", src) and symbol not in imported:
+            # A member call such as viewModel.launch(...) is not the coroutine
+            # builder, so only count the symbol when no dot precedes it.
+            free_use = re.search(rf"(?<![\w.]){symbol}\s*[\(<{{]", src)
+            bare_use = re.search(rf"(?<![\w.]){symbol}\b(?!\s*\()", src) and symbol in (
+                "getValue", "setValue", "by", "viewModelScope",
+            )
+            if (free_use or bare_use) and symbol not in imported:
                 # Only complain when the file does not declare it itself
                 if f"fun {symbol}" in src:
                     continue
