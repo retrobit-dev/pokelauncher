@@ -97,6 +97,20 @@ jobs:
                       if "??" in line or "attr/??" in line:
                           ann("error", f"{os.path.relpath(path)}:{index + 1}: {line.strip()[:160]}")
 
+          # Test failures carry their assertion message in the XML/HTML report;
+          # surface it here so a sandbox without access to the artifact host can
+          # still see why a test failed.
+          for report in sorted(glob.glob("app/build/test-results/**/*.xml", recursive=True))[:3]:
+              try:
+                  content = pathlib.Path(report).read_text(errors="replace")
+              except OSError:
+                  continue
+              for match in re.finditer(
+                      r'<testcase name="([^"]+)".*?<failure[^>]*>(.*?)</failure>',
+                      content, re.S):
+                  message = re.sub(r"\s+", " ", match.group(2))[:420]
+                  ann("error", f"{match.group(1)}: {message}")
+
           patterns = {
               "error": r"error:|e: file://|FAILED|Caused by",
               "warning": r"^(w:|warning:)|: warning:",
