@@ -46,6 +46,14 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    // org.json ships with the Android framework and throws "not mocked" in a
+    // plain JVM unit test, which would leave the map parser (MapJson) untested.
+    // The real implementation is a small, dependency-free jar, so test it for
+    // real instead of stubbing it.
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
@@ -66,4 +74,5 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)
+    testImplementation("org.json:json:20240303")
 }
