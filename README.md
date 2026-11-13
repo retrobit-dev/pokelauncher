@@ -139,6 +139,29 @@ plus pohon 32×32). Untuk menambah tile, atlas digandakan ke 256×256 px (16×16
 Semua skala bilangan bulat supaya piksel tetap tajam di 343 ppi; skala pecahan seperti 2,5×
 akan membuat tile 1 px lebih lebar di sini dan lebih sempit di sana.
 
+**Grid untuk mendesain layar**
+
+Kanvas 2560×1600 px = 853,3×533,3 dp (1 dp = 3 px). Pilih grid-nya sesuai pekerjaan:
+
+| Grid | Jumlah sel | Sel (mm) | Dipakai untuk |
+| --- | --- | --- | --- |
+| **16 px** | 160 × 100 | 1,2 | Dunia game: satu sel = satu tile. |
+| **40 px** | 64 × 40 | 3,0 | Zona HUD, mendekati 48 dp target sentuh. |
+| **64 px** | 40 × 25 | 4,7 | Kartu, tombol besar (≈21 dp). |
+| **48 dp** | 17,8 × 11,1 | 7,6 | Target sentuh minimum, spasi antar panel. |
+
+Hanya pembagi yang membagi habis 2560 **dan** 1600 yang memberi grid utuh: 16, 32, 40, 64, 80,
+160, 320. 48 px dan 96 px terlihat bulat tapi menyisakan baris/kolom separuh — jangan dipakai
+untuk grid utama.
+
+Aturan aman:
+
+- Semua tepi elemen di **kelipatan 8 dp** (24 px). Di 343 ppi itu 1,8 mm, cukup kecil untuk
+  rapat dan cukup besar untuk tidak berdesakan.
+- Tombol minimal **48×48 dp** (144×144 px). Untuk dipakai sambil memegang tablet, pakai 64 dp.
+- Mulai konten di **x ≥ 124 px, y ≥ 124 px** supaya tidak tertutup kamera punch hole.
+- Margin luar 24–32 dp; jarak antar panel 12–16 dp.
+
 **Struktur kode**
 
 ```
