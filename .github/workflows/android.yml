@@ -48,6 +48,7 @@ jobs:
           node tools/game_rules_test.js
           node tools/validate_starter_map.js
           node tools/editor_load_test.js
+          python3 tools/world_rules_sim.py
 
       # Raw job logs live on a blob host that some networks cannot reach, so the
       # compiler output is also emitted as workflow annotations (readable via

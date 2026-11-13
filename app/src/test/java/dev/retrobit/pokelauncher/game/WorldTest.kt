@@ -123,7 +123,8 @@ class WorldTest {
     fun `unknown tile names are dropped so a renamed tile cannot crash a map`() {
         val tiles = MapJson.parseTileSet(tilesJson)
         val json = JSONObject(mapJson()).apply {
-            getJSONObject("cells").put("3,3", JSONObject().put("object", "no_such_tile"))
+            val cell = getJSONObject("cells").getJSONObject("3,3")
+            cell.put("object", "no_such_tile")
         }.toString()
         val map = MapJson.parseMap(json, tiles)
         assertNull(map.cell(3, 3)?.objectTile)
@@ -197,8 +198,9 @@ class WorldTest {
     fun `mining a tree yields wood and clears the cell`() {
         // Start away from the tree so reach is actually exercised: the spawn is
         // 2,3 and the tree 2,2, so from there the tree is already adjacent.
-        val world = World(MapJson.parseMap(mapJson(), MapJson.parseTileSet(tilesJson)),
-            MapJson.parseTileSet(tilesJson), startX = 8, startY = 7)
+        // (4,6) is on the near side of the pond at x=5.
+        val tiles = MapJson.parseTileSet(tilesJson)
+        val world = World(MapJson.parseMap(mapJson(), tiles), tiles, startX = 4, startY = 6)
 
         // 2,3 is plain grass: there is nothing to mine there
         assertTrue(world.mine(2, 3) is World.MineResult.Nothing)
@@ -206,11 +208,8 @@ class WorldTest {
         val far = world.mine(2, 2)
         assertTrue("a tree six cells away is out of reach", far is World.MineResult.TooFar)
 
-        // Walk to the tree. The pond at x=5 blocks row 2, so go up to row 6
-        // (below the pond's last row), cross to x=2, then north.
-        world.step(Direction.UP)                      // 8,7 -> 8,6
-        assertEquals(6, world.playerY)
-        repeat(6) { world.step(Direction.LEFT) }      // 8,6 -> 2,6
+        // Walk to the tree: west along row 6, then north to row 3.
+        repeat(2) { world.step(Direction.LEFT) }      // 4,6 -> 2,6
         assertEquals(2, world.playerX)
         repeat(3) { world.step(Direction.UP) }        // 2,6 -> 2,3
         assertEquals(3, world.playerY)
@@ -434,12 +433,18 @@ class WorldTest {
 
     @Test
     fun `tapping a solid cell walks to the cell beside it`() {
-        val world = world()
-        val path = Pathfinder.find(2, 3, 2, 2) { x, y -> world.canStand(x, y) }
-        assertTrue("a tree tap must still walk somewhere useful", path.isNotEmpty())
+        // Already next to the tree: the correct answer is "stay", not a detour.
+        val close = world()
+        assertTrue("no walk is needed when already adjacent",
+            Pathfinder.find(2, 3, 2, 2) { x, y -> close.canStand(x, y) }.isEmpty())
+
+        // From across the map the walk must exist and stop beside the tree.
+        val far = world()
+        val path = Pathfinder.find(8, 6, 2, 2) { x, y -> far.canStand(x, y) }
+        assertTrue("a tree tap must walk to it", path.isNotEmpty())
         val (lx, ly) = path.last()
         assertTrue("the walk stops next to the tree, never on it", !(lx == 2 && ly == 2))
-        assertTrue(Math.abs(lx - 2) + Math.abs(ly - 2) == 1)
+        assertTrue("and ends adjacent to it", Math.abs(lx - 2) + Math.abs(ly - 2) == 1)
     }
 
     @Test
@@ -473,8 +478,8 @@ class WorldTest {
 
     @Test
     fun `night is the window from 18 to 6`() {
-        assertFalse(GameClock.atMinute(5 * 60 + 59).isNight)
-        assertTrue(GameClock.atMinute(6 * 60).isNight.not())
+        assertTrue("05:59 is still night", GameClock.atMinute(5 * 60 + 59).isNight)
+        assertFalse("06:00 is morning", GameClock.atMinute(6 * 60).isNight)
         assertTrue(GameClock.atMinute(18 * 60).isNight)
         assertTrue("midnight is night", GameClock.atMinute(0).isNight)
         assertTrue(GameClock.atMinute(23 * 60 + 59).isNight)
