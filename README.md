@@ -6,8 +6,9 @@ enam slot "party", app drawer, jam HeartGold, dan setelan tampilan. Seluruh ilus
 
 ![PokeLauncher di MatePad Mini](docs/preview-tablet.png)
 
-> Layar launcher di dalam bezel **Huawei MatePad Mini** (8.8", 2560 × 1600, 343 ppi, bezel
-> ~4.4 mm), landscape. Dibuat oleh `tools/render_tablet.py` dari palet asli
+> Layar launcher di dalam bezel hitam **Huawei MatePad Mini** (8.8", 2560 × 1600, 343 ppi, bezel
+> ~4.4 mm), landscape. PNG-nya RGBA: sudut bodi transparan sehingga bentuk tablet tetap terlihat
+> di atas latar apa pun. Dibuat oleh `tools/render_tablet.py` dari palet asli
 > `ui/theme/Theme.kt` dan tata letak `LauncherScreen.kt` — pratinjau desain, bukan render emulator.
 
 ### Perilaku di layar besar
