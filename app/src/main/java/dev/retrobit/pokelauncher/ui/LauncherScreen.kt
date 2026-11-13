@@ -325,7 +325,7 @@ private fun HomeSurface(
                 facing = world.facing,
                 scale = state.scale,
                 nightAmount = 0f,
-                litAt = { false },
+                litAt = { _, _ -> false },
                 builtAt = { x, y -> world.builtAt(x, y) != null },
                 cropsAt = { x, y -> world.cropAt(x, y)?.stage(state.day) ?: 0 },
                 onCellTap = game::tapCell,
