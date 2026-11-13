@@ -177,7 +177,7 @@ class GameViewModel(context: Context) : ViewModel() {
         _state.value = current.copy(revision = current.revision + 1)
     }
 
-    private fun useUnderfoot() {
+    fun useUnderfoot() {
         val current = _state.value
         val world = current.world ?: return
         val today = current.clock.minuteOfDay / 1440
@@ -190,6 +190,14 @@ class GameViewModel(context: Context) : ViewModel() {
         }
         if (!acted) world.eat()
         _state.value = current.copy(revision = current.revision + 1)
+    }
+
+    /** The HUD's MAKAN button. */
+    fun eat() {
+        val current = _state.value
+        if (current.world?.eat() == true) {
+            _state.value = current.copy(revision = current.revision + 1)
+        }
     }
 
     fun placeLight() {

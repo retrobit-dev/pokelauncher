@@ -43,6 +43,7 @@ jobs:
           python3 tools/verify.py
           python3 tools/static_check.py
           python3 tools/kotlin_symbols.py
+          python3 tools/kotlin_calls.py
           node tools/editor_test.js
           node tools/game_rules_test.js
           node tools/validate_starter_map.js

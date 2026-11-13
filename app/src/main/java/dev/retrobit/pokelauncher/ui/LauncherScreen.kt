@@ -342,8 +342,12 @@ private fun HomeSurface(
             wood = world.wood,
             stone = world.stone,
             food = world.food,
+            seeds = world.seeds,
             nearMachine = game.nearMachine(),
             onOpenLauncher = onOpenLauncher,
+            onEat = game::eat,
+            onTill = game::useUnderfoot,
+            onPlaceLight = game::placeLight,
         )
     }
 }

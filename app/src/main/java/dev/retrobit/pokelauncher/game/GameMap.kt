@@ -100,7 +100,7 @@ class GameMap(
             spawnY: Int = rows / 2,
         ): GameMap {
             // Drop anything outside the grid instead of trusting the file.
-            val kept = cells.filterKeys { (k) ->
+            val kept = cells.filterKeys { k ->
                 val x = (k shr 32).toInt()
                 val y = (k and 0xFFFFFFFFL).toInt()
                 x in 0 until cols && y in 0 until rows
