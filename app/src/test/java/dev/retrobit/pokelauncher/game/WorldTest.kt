@@ -202,11 +202,13 @@ class WorldTest {
         val tiles = MapJson.parseTileSet(tilesJson)
         val world = World(MapJson.parseMap(mapJson(), tiles), tiles, startX = 4, startY = 6)
 
-        // 2,3 is plain grass: there is nothing to mine there
-        assertTrue(world.mine(2, 3) is World.MineResult.Nothing)
+        // Doubles as a reach check: (2,3) is six cells away, so the game refuses
+        // before it even asks what is there.
+        assertTrue("a cell six steps away is out of reach",
+            world.mine(2, 3) is World.MineResult.TooFar)
 
         val far = world.mine(2, 2)
-        assertTrue("a tree six cells away is out of reach", far is World.MineResult.TooFar)
+        assertTrue("so is the tree", far is World.MineResult.TooFar)
 
         // Walk to the tree: west along row 6, then north to row 3.
         repeat(2) { world.step(Direction.LEFT) }      // 4,6 -> 2,6

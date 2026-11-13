@@ -142,6 +142,7 @@ check('berhenti sebelum air', (w.x,w.y), (4,3))
 
 m = World(4, 6)
 check('tebang dari jauh', m.mine(2,2), 'TooFar')
+check('sel 6 langkah juga di luar jangkauan', m.mine(2,3), 'TooFar')
 for _ in range(2): m.step(-1,0)
 check('sampai kolom 2', m.x, 2)
 for _ in range(3): m.step(0,-1)
