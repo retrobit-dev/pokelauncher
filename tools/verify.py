@@ -263,7 +263,7 @@ def check_ci() -> None:
 
 # -------------------------------------------------- strings aapt2 traps
 def check_string_escapes() -> None:
-    """aapt2 treats a value that starts with ? or @ as a resource reference.
+    r"""aapt2 treats a value that starts with ? or @ as a resource reference.
 
     A user facing string such as '???' therefore fails the build with
     "resource attr/?? not found". Such values must be escaped (\?\?\?).
