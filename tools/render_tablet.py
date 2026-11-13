@@ -6,9 +6,12 @@ Device reference (Huawei MatePad Mini, 2025):
   body 198.6 x 127.3 x 5.2 mm -> ~4.4 mm bezel all round, 32 MP punch hole
   camera inside the display.
 
-The screen shows the world: the starter village with the trainer, the field,
-the torches and the HUD, exactly as `tools/mock_ingame.py` draws it. The frame
-is a flat black bezel: no aluminium, no keys, no shadow.
+The screen starts empty: a clean paper canvas, ready to be built up step by
+step. Pass `--world` to fill it with the in-game mockup from
+`tools/mock_ingame.py`; that path is kept so the world can come back without
+rewriting the renderer.
+
+The frame is a flat black bezel: no aluminium, no keys, no shadow.
 
 The page around the device is a bright sky blue, so the black bezel reads as a
 device floating on a light desk rather than a black rectangle on a black page.
@@ -329,8 +332,9 @@ class Device:
     SCREEN_CORNER = dp(10.0)         # panel corner radius: dp, like the device
     PAD = 72
 
-    def __init__(self, w: int, h: int) -> None:
+    def __init__(self, w: int, h: int, show_world: bool = False) -> None:
         self.w, self.h = w, h            # display size in px
+        self.show_world = show_world     # False: a blank screen to build on
         self.body_w = w + 2 * self.BEZEL
         self.body_h = h + 2 * self.BEZEL
         self.outer_w = self.body_w + 2 * self.PAD
@@ -339,6 +343,17 @@ class Device:
         self.world: Canvas | None = None
 
     # -- screen content ------------------------------------------------
+    def draw_blank(self) -> None:
+        """A clean, empty screen: the paper colour and nothing else.
+
+        This is the starting point for building the world back up one piece at
+        a time. No HUD, no field, no title: an empty canvas makes each step
+        visible on its own, instead of hiding a new element inside a busy shot.
+        """
+        panel = Canvas(self.w, self.h, PAPER, alpha=255)
+        self.round_panel(panel)
+        self.world = panel
+
     def draw_world(self) -> None:
         """Copies the in-game mockup onto the panel, scaling to fit.
 
@@ -471,7 +486,13 @@ class Device:
         # on top because the page is already laid down: drawing the screen after
         # the body is what used to leave the panel showing the page colour.
         self.world = None
-        self.draw_world()
+        # `--world` restores the full in-game mockup. The default is the empty
+        # canvas: the screen is being rebuilt step by step, and the renderer
+        # keeps the machinery for the moment the world comes back.
+        if self.show_world:
+            self.draw_world()
+        else:
+            self.draw_blank()
         self.draw_body()
         if self.world is not None:
             for yy in range(self.h):
@@ -483,11 +504,12 @@ class Device:
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Renders the single landscape preview. No arguments, one output."""
+    """Renders the landscape preview: an empty screen unless --world is passed."""
+    argv = list(argv or [])
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     # 2560 x 1600: the MatePad Mini panel in landscape.
-    device = Device(2560, 1600)
+    device = Device(2560, 1600, show_world="--world" in argv)
     png = device.render().to_png(os.path.join(root, "docs", "preview-tablet.png"))
     print(f"docs/preview-tablet.png ({png // 1024} KB, {device.outer_w}x{device.outer_h})")
 

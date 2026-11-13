@@ -406,11 +406,12 @@ PAD = 72
 
 
 def check_preview_screen(path: str) -> None:
-    """The published shot: bright page, black frame, a world inside the panel.
+    """The published shot: bright page, black frame, an empty paper screen.
 
-    Three things are easy to break and all three have been broken before:
-    the page turning black, the panel staying empty, and the device sliding
-    out of its margin. So sample all three regions by pixel.
+    The screen is deliberately blank while the UI is rebuilt step by step, so
+    the check is the opposite of the old one: the panel must be one uniform
+    paper colour, opaque edge to edge. A stray tile, a leftover HUD or a
+    half-painted screen shows up here immediately.
     """
     decoded = decode_png(path)
     if decoded is None:
@@ -422,7 +423,7 @@ def check_preview_screen(path: str) -> None:
         line = rows[y]
         return line[i], line[i + 1], line[i + 2], line[i + 3]
 
-    # 1. the page: bright, opaque, all four margins
+    # 1. the page: bright, opaque, in all four margins
     for x, y, where in ((2, 2, "top-left"), (width - 3, 2, "top-right"),
                         (2, height - 3, "bottom-left"), (width - 3, height - 3, "bottom-right")):
         sample = pixel(x, y)
@@ -437,30 +438,26 @@ def check_preview_screen(path: str) -> None:
     if sum(frame[:3]) > 120:
         fail(f"the bezel should be black, found {frame[:3]} just outside the panel")
 
-    # 3. the panel: the world, opaque, and not one flat colour
-    seen = set()
-    for fy in (0.2, 0.4, 0.6, 0.8):
-        for fx in (0.2, 0.4, 0.6, 0.8):
+    # 3. the panel: empty paper, opaque, and nothing else. Sample a grid wide
+    # enough to catch a panel, a sprite or a leftover strip.
+    for fy in (0.1, 0.3, 0.5, 0.7, 0.9):
+        for fx in (0.1, 0.3, 0.5, 0.7, 0.9):
             x = panel_x + int(PANEL[0] * fx)
             y = panel_y + int(PANEL[1] * fy)
             sample = pixel(x, y)
             if sample[3] != 255:
                 fail(f"the panel is transparent at {x},{y}; the screen must be opaque")
                 return
-            seen.add(sample[:3])
-    if len(seen) < 3:
-        fail(f"the panel looks empty, only {len(seen)} distinct colour(s): "
-             "the device render must show the in-game screen")
-        return
+            if max(abs(sample[i] - PAPER_CMYK[i]) for i in range(3)) > 6:
+                fail(f"the screen should be empty HgColors.Paper, found {sample[:3]} at {x},{y}")
+                return
 
-    # 4. the camera must not sit on top of the HUD. The lens occupies the
-    # panel's top-left corner; just past it the clock panel must be the paper
-    # colour, which is the whole point of insetting the HUD by the cutout.
-    hud = pixel(panel_x + 160, panel_y + 60)
-    if max(abs(hud[i] - PAPER_CMYK[i]) for i in range(3)) > 24:
-        fail(f"the clock panel should start past the camera, found {hud[:3]}")
+    # 4. and the camera is still there, on top of the blank screen
+    lens = pixel(panel_x + 96, panel_y + 96)
+    if sum(lens[:3]) > 150:
+        fail(f"the punch hole camera is missing from the top-left corner ({lens[:3]})")
 
-    # 5. the bright margin is uniform, so the frame never floats on a gradient
+    # 5. the bright margin is uniform
     edge = pixel(6, height // 2)
     if max(abs(edge[i] - PAGE_BRIGHT[i]) for i in range(3)) > 24:
         fail(f"preview page should be #BFE3F2, found {edge[:3]}")

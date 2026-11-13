@@ -275,12 +275,34 @@ fun LauncherScreen(viewModel: LauncherViewModel) {
     }
 }
 
+/**
+ * Whether the home screen draws the world.
+ *
+ * Off while the UI is rebuilt step by step: the screen is a clean paper canvas
+ * and every element comes back deliberately. The world, its rules and the
+ * renderer are untouched behind this flag, so switching it to `true` restores
+ * the previous home screen in one line.
+ */
+private const val SHOW_WORLD = false
+
 @Composable
 private fun HomeSurface(
     game: GameViewModel,
     onOpenLauncher: () -> Unit,
     onOpenMenu: () -> Unit,
 ) {
+    if (!SHOW_WORLD) {
+        // Nothing on the screen: no clock, no HUD, no field. The paper fill is
+        // the same colour as the tablet preview, so what you design next lands
+        // on the canvas you are looking at.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(HgColors.Paper),
+        )
+        return
+    }
+
     val state by game.state.collectAsState()
     val world = state.world
     val atlas = state.atlas
