@@ -8,6 +8,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -32,6 +33,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import dev.retrobit.pokelauncher.data.AppEntry
@@ -43,6 +46,9 @@ import dev.retrobit.pokelauncher.ui.screens.AppInfoSheet
 import dev.retrobit.pokelauncher.ui.screens.HgDialog
 import dev.retrobit.pokelauncher.ui.screens.MenuSheet
 import dev.retrobit.pokelauncher.ui.screens.SettingsContent
+import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.retrobit.pokelauncher.game.GameMap
+import dev.retrobit.pokelauncher.game.World
 import dev.retrobit.pokelauncher.ui.screens.SettingsScreen
 import dev.retrobit.pokelauncher.ui.theme.HgColors
 import dev.retrobit.pokelauncher.ui.theme.HgText
@@ -55,6 +61,8 @@ import dev.retrobit.pokelauncher.R
  */
 @Composable
 fun LauncherScreen(viewModel: LauncherViewModel) {
+    val context = LocalContext.current
+    val game: GameViewModel = viewModel(factory = GameViewModel.Factory(context))
     val state by viewModel.state.collectAsState()
     val settings = state.settings
 
@@ -88,7 +96,10 @@ fun LauncherScreen(viewModel: LauncherViewModel) {
             // Home content: a clean, empty screen. Everything else the
             // launcher offers lives in the drawer, menu and settings layers.
             Box(modifier = Modifier.weight(1f)) {
-                HomeSurface()
+                HomeSurface(
+                    game = game,
+                    onOpenLauncher = { showDrawer = true },
+                )
             }
 
             // On tablets and foldables the settings slide in as a side panel so
@@ -264,14 +275,75 @@ fun LauncherScreen(viewModel: LauncherViewModel) {
 }
 
 @Composable
-private fun HomeSurface() {
-    // Clean home screen: nothing but the wallpaper colour. No clock, no party
-    // cards, no status strip, no illustration - a blank canvas for the user's
-    // own widgets. Launcher modes (drawer, settings, menu) still work through
-    // Back/long press handlers in LauncherScreen.
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(HgColors.Paper),
-    )
+private fun HomeSurface(
+    game: GameViewModel,
+    onOpenLauncher: () -> Unit,
+) {
+    val state by game.state.collectAsState()
+    val world = state.world
+    val atlas = state.atlas
+
+    // Until the atlas and map load, show the paper screen rather than a flash of
+    // half a world. It is also the fallback if the assets are missing.
+    if (!state.ready || world == null || atlas == null) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(HgColors.Paper),
+        )
+        return
+    }
+
+    // Re-read the revision so a change made inside the world (a mined tree, a
+    // planted seed) invalidates this scope even though World mutates in place.
+    @Suppress("UNUSED_EXPRESSION")
+    state.revision
+
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val density = LocalDensity.current
+        // The view size in pixels decides how much of the map fits and keeps the
+        // camera clamped to the map edge.
+        val viewPx = with(density) {
+            (maxWidth.toPx().toInt() / state.scale).coerceAtLeast(GameMap.TILE) to
+                (maxHeight.toPx().toInt() / state.scale).coerceAtLeast(GameMap.TILE)
+        }
+        val camera = remember(state.revision, viewPx, state.scale) {
+            state.camera.copy(
+                viewWidth = viewPx.first,
+                viewHeight = viewPx.second,
+                mapWidth = state.map.widthPx,
+                mapHeight = state.map.heightPx,
+            ).follow(world.playerX * GameMap.TILE, world.playerY * GameMap.TILE)
+        }
+
+        WorldCanvas(
+            map = state.map,
+            tiles = state.tiles,
+            atlas = atlas,
+            camera = camera,
+            playerX = world.playerX,
+            playerY = world.playerY,
+            facing = world.facing,
+            scale = state.scale,
+            nightAmount = 1f - state.clock.daylight,
+            builtAt = { x, y -> world.builtAt(x, y) != null },
+            cropsAt = { x, y -> world.cropAt(x, y)?.stage(state.clock.minuteOfDay / 1440) ?: 0 },
+            onCellTap = game::tapCell,
+            onZoom = game::zoomBy,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        GameHud(
+            clock = state.clock,
+            health = world.health,
+            maxHealth = World.MAX_HEALTH,
+            hunger = world.hunger,
+            maxHunger = World.MAX_HUNGER,
+            wood = world.wood,
+            stone = world.stone,
+            food = world.food,
+            nearMachine = game.nearMachine(),
+            onOpenLauncher = onOpenLauncher,
+        )
+    }
 }

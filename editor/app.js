@@ -16,7 +16,16 @@ const ZOOM_STEPS = [0.5, 1, 2, 3, 4, 6];   // 1 = exactly 16x16 px per cell
 // pixel, and in a smaller browser window it simply zooms out to fit.
 const DEFAULT_COLS = 160;
 const DEFAULT_ROWS = 100;
-const LAYERS = ['ground', 'object', 'building'];
+const LAYERS = ['ground', 'building', 'object'];   // paint order: top layer drawn last
+
+/**
+ * A cell holds one tile per layer, so a tree stands on grass instead of
+ * replacing it. The map is keyed "x,y|layer"; the saved file groups them back
+ * into "x,y" cells.
+ */
+function layerKey(x, y, layer) {
+  return `${x},${y}|${layer}`;
+}
 
 const $ = (id) => document.getElementById(id);
 
@@ -95,8 +104,8 @@ function draw() {
   for (const layer of LAYERS) {
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
-        const cell = state.cells.get(key(x, y));
-        if (!cell || cell.layer !== layer) continue;
+        const cell = state.cells.get(layerKey(x, y, layer));
+        if (!cell) continue;
         drawTile(ctx, cell.name, x * size - state.camera.x, y * size - state.camera.y, size);
       }
     }
@@ -109,10 +118,12 @@ function draw() {
 function drawTile(ctx, name, px, py, size) {
   const tile = state.tileset.tiles[name];
   if (!tile || !state.atlas) return;
+  // A 2x2 piece (the tree) must cover four cells, not be squashed into one.
+  // Its own w/h say how many cells it spans.
   ctx.drawImage(
     state.atlas,
-    tile.x, tile.y, tile.w, tile.h,     // source rect in the atlas
-    px, py, size, size,                  // destination on screen
+    tile.x, tile.y, tile.w, tile.h,                                  // source rect
+    px, py, (tile.w / TILE) * size, (tile.h / TILE) * size,          // destination
   );
 }
 
@@ -156,14 +167,22 @@ function drawCursor(ctx, size) {
 function paintAt(x, y) {
   if (!inBounds(x, y)) return;      // the map has a fixed edge
   if (state.tool === 'erase') {
-    // delete, never store null: a null cell would end up in the saved map
-    state.cells.delete(key(x, y));
+    // Remove one layer, topmost first: deleting a tree keeps the lawn under it,
+    // and a second erase on the same cell removes the lawn itself.
+    for (const layer of ['object', 'building', 'ground']) {
+      if (state.cells.delete(layerKey(x, y, layer))) return;
+    }
     return;
   }
   if (state.tool === 'pick') {
-    const cell = state.cells.get(key(x, y));
-    if (cell) {
-      state.brush = { ...cell };
+    // topmost painted layer wins: that is what the eye sees
+    let picked = null;
+    for (const layer of ['object', 'building', 'ground']) {
+      const cell = state.cells.get(layerKey(x, y, layer));
+      if (cell) { picked = cell; break; }
+    }
+    if (picked) {
+      state.brush = { ...picked };
       showBrush();
     } else {
       toast('Sel kosong');
@@ -174,17 +193,14 @@ function paintAt(x, y) {
     toast('Pilih tile dari + dulu');
     return;
   }
-  const existing = state.cells.get(key(x, y));
-  // one cell per layer: painting ground over a tree keeps the tree
-  if (existing && existing.layer !== state.brush.layer) {
-    state.cells.set(key(x, y), { ...state.brush });
-    return;
-  }
-  state.cells.set(key(x, y), { ...state.brush });
+  // one tile per layer: painting ground under a tree keeps the tree
+  state.cells.set(layerKey(x, y, state.brush.layer), { ...state.brush });
 }
 
 function fillFrom(x, y) {
-  const target = state.cells.get(key(x, y)) || null;
+  const target = state.brush
+    ? state.cells.get(layerKey(x, y, state.brush.layer)) || null
+    : null;
   const targetName = target ? target.name : null;
   if (!state.brush) {
     toast('Pilih tile dari + dulu');
@@ -202,10 +218,9 @@ function fillFrom(x, y) {
     if (seen.has(k)) continue;
     seen.add(k);
     if (!inBounds(cx, cy)) continue;
-    const cell = state.cells.get(k) || null;
+    const cell = state.cells.get(layerKey(cx, cy, state.brush.layer)) || null;
     const same = (cell ? cell.name : null) === targetName;
     if (!same) continue;
-    if (cell && cell.layer !== state.brush.layer) continue;
     paintAt(cx, cy);
     queue.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
   }
@@ -319,9 +334,12 @@ function toggleDrawer(force) {
 
 // ------------------------------------------------------------------ persistence
 async function save() {
+  // group the per-layer keys back into one cell object per position
   const cells = {};
   for (const [k, cell] of state.cells) {
-    if (cell && cell.name && state.tileset.tiles[cell.name]) cells[k] = cell;
+    if (!cell || !cell.name || !state.tileset.tiles[cell.name]) continue;
+    const xy = k.split('|')[0];
+    (cells[xy] = cells[xy] || {})[cell.layer || 'object'] = cell.name;
   }
   const cellsArr = Object.entries(cells);
   if (!cellsArr.length && !confirm('Peta kosong. Tetap simpan?')) return;
@@ -354,8 +372,21 @@ async function loadMap() {
     state.cols = doc.cols || DEFAULT_COLS;
     state.rows = doc.rows || DEFAULT_ROWS;
     state.cells.clear();
-    for (const [k, cell] of Object.entries(doc.cells || {})) {
-      if (cell && state.tileset.tiles[cell.name]) state.cells.set(k, cell);
+    for (const [xy, value] of Object.entries(doc.cells || {})) {
+      // current format: {ground,object,building}; older files: one {name,layer}
+      if (value && typeof value.name === 'string') {
+        if (state.tileset.tiles[value.name]) {
+          state.cells.set(layerKey(...xy.split(',').map(Number), value.layer || 'object'), { ...value });
+        }
+        continue;
+      }
+      if (!value) continue;
+      for (const layer of LAYERS) {
+        const name = value[layer];
+        if (!name || !state.tileset.tiles[name]) continue;
+        state.cells.set(layerKey(...xy.split(',').map(Number), layer),
+          { name, layer, solid: !!state.tileset.tiles[name].solid });
+      }
     }
     toast(`Peta dimuat (${state.cells.size} sel)`);
   } catch {
@@ -367,7 +398,7 @@ function seedIfEmpty() {
   if (state.cells.size || state.loadedMap) return;
   for (let y = 0; y < state.rows; y++) {
     for (let x = 0; x < state.cols; x++) {
-      state.cells.set(key(x, y), { name: 'grass', layer: 'ground', solid: false });
+      state.cells.set(layerKey(x, y, 'ground'), { name: 'grass', layer: 'ground', solid: false });
     }
   }
 }
@@ -382,19 +413,26 @@ function mapExtent() {
   return { minX: 0, minY: 0, maxX: state.cols - 1, maxY: state.rows - 1 };
 }
 
-/** Frames the map so the grid fills the window. */
+/** Frames the map so the grid fills the window at an exact 16px cell if it can. */
 function fitToScreen() {
   const { minX, minY, maxX, maxY } = mapExtent();
   const cols = maxX - minX + 1;
   const rows = maxY - minY + 1;
   const fit = Math.min(window.innerWidth / (cols * TILE),
                        window.innerHeight / (rows * TILE));
-  // Pick the SMALLEST step that still covers the window. Rounding down would
-  // leave empty margins, which defeats "the grid fills the screen".
-  const covering = ZOOM_STEPS.filter((step) => step >= fit);
-  state.zoom = covering.length ? covering[0] : ZOOM_STEPS[ZOOM_STEPS.length - 1];
+  // The grid exists to be edited at 16x16 px. If the whole map fits in the
+  // window at 1:1, that is the answer; only zoom in when it would otherwise be
+  // unreadably small, and only zoom out when the map does not fit.
+  let zoom;
+  if (fit >= 1) {
+    zoom = 1;                                    // 1:1: one cell is 16x16 px
+  } else {
+    // not enough room: smallest step that still covers the window
+    const covering = ZOOM_STEPS.filter((step) => step >= fit);
+    zoom = covering.length ? covering[0] : ZOOM_STEPS[ZOOM_STEPS.length - 1];
+  }
+  state.zoom = zoom;
   const size = cellSize();
-  // centre the painted area in the window
   state.camera.x = minX * size - (window.innerWidth - cols * size) / 2;
   state.camera.y = minY * size - (window.innerHeight - rows * size) / 2;
 }

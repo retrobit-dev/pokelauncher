@@ -597,7 +597,8 @@ def check_tileset() -> None:
     if len(tiles) < 20:
         fail(f"tileset should hold the Johto palette, only {len(tiles)} tiles indexed")
 
-    for name in ("grass", "path", "water", "tree", "roof", "wall_door"):
+    for name in ("grass", "path", "water", "tree", "roof", "wall_door",
+                 "machine_left", "machine_right"):
         if name not in tiles:
             fail(f"tileset is missing the '{name}' tile")
 
@@ -671,6 +672,52 @@ def check_editor() -> None:
         fail("editor/app.css must pin the map canvas to the whole window")
 
 
+def check_game_assets() -> None:
+    """The app ships its own copy of the tileset and the starter map.
+
+    `app/src/main/assets/tileset/` is what the APK loads. It is a copy, so it
+    drifts: a tile regenerated in docs/ and not copied leaves the game drawing
+    a blank cell. Compare the copies byte for byte instead of trusting the
+    build to remember.
+    """
+    import json
+
+    assets = os.path.join(ROOT, "app", "src", "main", "assets", "tileset")
+    docs = os.path.join(ROOT, "docs", "tileset")
+    for name in ("johto-tileset.png", "tileset.json"):
+        a = os.path.join(assets, name)
+        d = os.path.join(docs, name)
+        if not os.path.exists(a):
+            fail(f"app assets are missing {name}; the game would draw nothing")
+            continue
+        if os.path.exists(d) and open(a, "rb").read() != open(d, "rb").read():
+            fail(f"app/src/main/assets/tileset/{name} is out of date with docs/tileset/")
+
+    starter = os.path.join(assets, "map.json")
+    if not os.path.exists(starter):
+        fail("the starter map app/src/main/assets/tileset/map.json is missing")
+        return
+    try:
+        doc = json.load(open(starter, encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        fail(f"the starter map is not valid JSON: {error}")
+        return
+
+    index = json.load(open(os.path.join(docs, "tileset.json"), encoding="utf-8"))["tiles"]
+    cols, rows = doc.get("cols", 0), doc.get("rows", 0)
+    if cols < 20 or rows < 15:
+        fail(f"the starter map is {cols}x{rows}: too small to explore")
+    for key, cell in doc.get("cells", {}).items():
+        for layer in ("ground", "object", "building"):
+            name = cell.get(layer)
+            if name is not None and name not in index:
+                fail(f"starter map uses unknown tile '{name}' at {key}")
+                break
+    spawn = doc.get("spawn") or {}
+    if not (0 <= spawn.get("x", -1) < cols and 0 <= spawn.get("y", -1) < rows):
+        fail("the starter map spawn is outside the map")
+
+
 def main() -> int:
     check_gradle()
     check_kotlin_call_sites()
@@ -683,6 +730,7 @@ def main() -> int:
     check_home_role_flow()
     check_preview_assets()
     check_tileset()
+    check_game_assets()
 
     for problem in problems:
         print("FAIL", problem)

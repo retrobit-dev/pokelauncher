@@ -106,7 +106,7 @@ const source = fs.readFileSync(path.join(ROOT, 'editor/app.js'), 'utf8');
 const sandbox = { document, window, Image, fetch, console, setTimeout, clearTimeout };
 const loader = new Function(
   'document', 'window', 'Image', 'fetch', 'console', 'setTimeout', 'clearTimeout',
-  `${source}\nreturn { __steps: ZOOM_STEPS, boot, state, cellSize, key, paintAt, fillFrom, mapExtent,
+  `${source}\nreturn { __steps: ZOOM_STEPS, boot, state, cellSize, key, layerKey, paintAt, fillFrom, mapExtent,
             fitToScreen, zoomToActual, inBounds, DEFAULT_COLS, DEFAULT_ROWS, TILE };`
 );
 const editor = loader(sandbox.document, sandbox.window, sandbox.Image, sandbox.fetch,
@@ -114,7 +114,7 @@ const editor = loader(sandbox.document, sandbox.window, sandbox.Image, sandbox.f
 
 // --------------------------------------------------------------------- assertions
 editor.boot().then(() => {
-  const { state, cellSize, key, paintAt, fillFrom, mapExtent, fitToScreen, zoomToActual, ensureCoverage } = editor;
+  const { state, cellSize, key, layerKey, paintAt, fillFrom, mapExtent, fitToScreen, zoomToActual } = editor;
 
   console.log('grid 16x16');
   check('TILE adalah 16', editor.TILE, TILE);
@@ -133,7 +133,9 @@ editor.boot().then(() => {
   check('zoom dipilih agar pas', editor.__steps.includes(editor.state.zoom), true);
 
   console.log('\ntileset');
-  check('semua tile terbaca', Object.keys(state.tileset.tiles).length, 29);
+  // the atlas grows as art is added, so assert the palette is populated and
+  // that the tiles the editor needs are present, not a hard count
+  check('palet berisi tile', Object.keys(state.tileset.tiles).length >= 29, true);
   check('ada tile rumput', Boolean(state.tileset.tiles.grass), true);
   check('ada tile pohon', Boolean(state.tileset.tiles.tree), true);
 
@@ -141,11 +143,13 @@ editor.boot().then(() => {
   state.tool = 'pencil';
   state.brush = { name: 'path', layer: 'ground', solid: false };
   paintAt(10, 6);
-  check('pensil menaruh jalan', state.cells.get(key(10, 6)).name, 'path');
+  check('pensil menaruh jalan', state.cells.get(layerKey(10, 6, 'ground')).name, 'path');
   state.brush = { name: 'tree', layer: 'object', solid: true };
   paintAt(12, 6);
-  check('pohon masuk layer objek', state.cells.get(key(12, 6)).name, 'tree');
-  check('pohon menyimpan properti solid', state.cells.get(key(12, 6)).solid, true);
+  check('pohon masuk layer objek', state.cells.get(layerKey(12, 6, 'object')).name, 'tree');
+  check('pohon menyimpan properti solid', state.cells.get(layerKey(12, 6, 'object')).solid, true);
+  // the important rule: an object must not erase the ground under it
+  check('rumput tetap ada di bawah pohon', state.cells.get(layerKey(12, 6, 'ground')).name, 'grass');
 
   console.log('\nbatas peta');
   state.tool = 'pencil';
@@ -158,8 +162,8 @@ editor.boot().then(() => {
   check('inBounds menerima pojok kanan bawah', editor.inBounds(cols - 1, rows - 1), true);
 
   state.tool = 'erase';
-  paintAt(10, 6);
-  check('hapus membuang sel', state.cells.has(key(10, 6)), false);
+  paintAt(10, 6);                                   // removes the path (top layer)
+  check('hapus membuang lapisan teratas', state.cells.has(layerKey(10, 6, 'ground')), false);
   check('hapus tidak menyimpan null', Array.from(state.cells.values()).every((c) => c && c.name), true);
 
   console.log('\nmengisi area');

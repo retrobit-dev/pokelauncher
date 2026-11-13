@@ -179,23 +179,23 @@
       "solid": false,
       "layer": "object"
     },
-    "wall_plain": {
+    "machine_left": {
       "x": 96,
       "y": 32,
       "w": 16,
       "h": 16,
       "solid": true,
-      "layer": "building"
+      "layer": "object"
     },
-    "wall_window": {
+    "machine_right": {
       "x": 112,
       "y": 32,
       "w": 16,
       "h": 16,
       "solid": true,
-      "layer": "building"
+      "layer": "object"
     },
-    "wall_door": {
+    "wall_plain": {
       "x": 0,
       "y": 48,
       "w": 16,
@@ -203,7 +203,7 @@
       "solid": true,
       "layer": "building"
     },
-    "roof": {
+    "wall_window": {
       "x": 16,
       "y": 48,
       "w": 16,
@@ -211,7 +211,7 @@
       "solid": true,
       "layer": "building"
     },
-    "roof_left": {
+    "wall_door": {
       "x": 32,
       "y": 48,
       "w": 16,
@@ -219,8 +219,24 @@
       "solid": true,
       "layer": "building"
     },
-    "roof_right": {
+    "roof": {
       "x": 48,
+      "y": 48,
+      "w": 16,
+      "h": 16,
+      "solid": true,
+      "layer": "building"
+    },
+    "roof_left": {
+      "x": 64,
+      "y": 48,
+      "w": 16,
+      "h": 16,
+      "solid": true,
+      "layer": "building"
+    },
+    "roof_right": {
+      "x": 80,
       "y": 48,
       "w": 16,
       "h": 16,
@@ -229,7 +245,7 @@
     },
     "tree": {
       "x": 0,
-      "y": 80,
+      "y": 64,
       "w": 32,
       "h": 32,
       "solid": true,

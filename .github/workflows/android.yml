@@ -35,11 +35,18 @@ jobs:
 
       # The map editor is plain JS served by preview_server.py, so it is tested
       # here rather than by Gradle: layout, the 16x16 grid, painting, bounds.
-      - name: Test the map editor
+      # The game core is plain Kotlin with no Android imports, so its rules are
+      # covered by testDebugUnitTest above. The browser tools and the shipped
+      # map are checked here.
+      - name: Check tools, editor and starter map
         run: |
           python3 tools/verify.py
           python3 tools/static_check.py
+          python3 tools/kotlin_symbols.py
           node tools/editor_test.js
+          node tools/game_rules_test.js
+          node tools/validate_starter_map.js
+          node tools/editor_load_test.js
 
       # Raw job logs live on a blob host that some networks cannot reach, so the
       # compiler output is also emitted as workflow annotations (readable via

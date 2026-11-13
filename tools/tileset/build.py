@@ -25,6 +25,7 @@ from tileset import buildings as B          # noqa: E402
 from tileset import ground as G             # noqa: E402
 from tileset import objects as O            # noqa: E402
 from tileset import palette as P            # noqa: E402
+from tileset import tools_machine as M      # noqa: E402
 from tileset.pixels import Image            # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -65,6 +66,9 @@ def object_tiles() -> list[tuple[str, object, bool]]:
         ("fence_v", O.fence_v, True),
         ("sign", O.sign, True),
         ("stairs", O.stairs, False),
+        # the launcher terminal, one 32x16 machine in two 16px halves
+        ("machine_left", M.machine_left, True),
+        ("machine_right", M.machine_right, True),
     ]
 
 
@@ -104,16 +108,17 @@ def build_atlas(out_dir: str) -> dict:
             "layer": layer,
         }
 
-    # the tree is the one multi-tile piece: a 2x2 footprint in its own spot
+    # the tree is the one multi-tile piece: a 2x2 footprint in its own spot,
+    # starting on the first free row so it can never overlap the packed grid
     tree = O.tree_canopy()
-    tree_y = rows * TILE + TILE
-    atlas_h = rows * TILE + TILE + tree.h
+    tree_y = rows * TILE
+    atlas_h = tree_y + tree.h
     tall = Image(atlas.w, atlas_h)
     tall.blit(atlas, 0, 0)
     tall.blit(tree, 0, rows * TILE + TILE)
     index["tree"] = {
         "x": 0,
-        "y": rows * TILE + TILE,
+        "y": tree_y,
         "w": tree.w,
         "h": tree.h,
         "solid": True,
