@@ -57,9 +57,9 @@ app/src/main/java/dev/retrobit/pokelauncher/
 │   ├── PartyRules.kt            Aturan party 6 slot (murni Kotlin, ada unit test)
 │   └── LauncherRepository.kt    PackageManager, prefs, cache ikon
 ├── ui/
-│   ├── LauncherScreen.kt        Root: wallpaper, top bar, party grid, modal
+│   ├── LauncherScreen.kt        Root: layar home kosong + semua modal
 │   ├── LauncherViewModel.kt     StateFlow tunggal, semua I/O di Dispatchers.IO
-│   ├── components/              HgPanel, HgButton, GameCard, Pokeball, ikon vektor
+│   ├── components/              HgPanel, HgButton, AppIcon, Pokeball, ikon vektor
 │   ├── screens/                 App drawer, settings, menu sheet, app info, dialog
 │   └── theme/                   Palet HeartGold + 3 font pixel
 └── res/                         strings (id + en), tema, ikon adaptive
