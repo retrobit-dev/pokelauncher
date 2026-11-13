@@ -1,6 +1,9 @@
 const fs = require('fs');
-const map = JSON.parse(fs.readFileSync('app/src/main/assets/tileset/map.json', 'utf8'));
-const tiles = JSON.parse(fs.readFileSync('docs/tileset/tileset.json', 'utf8')).tiles;
+const path = require('path');
+const ROOT = path.resolve(__dirname, '..');
+const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
+const map = JSON.parse(read('app/src/main/assets/tileset/map.json'));
+const tiles = JSON.parse(read('docs/tileset/tileset.json')).tiles;
 
 let bad = 0;
 function fail(m) { console.log('  FAIL', m); bad++; }

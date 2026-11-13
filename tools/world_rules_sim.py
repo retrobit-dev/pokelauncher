@@ -10,7 +10,9 @@ pond, and a night-window assertion that said 05:59 was daytime.
 
 Keep the three in step when a rule changes.
 """
-import json, math
+import json, os, math, os
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 TILE = 16
 MAX_HEALTH, MAX_HUNGER = 10, 10
@@ -22,7 +24,7 @@ class Tiles:
     def __init__(self, d): self.d = d
     def get(self, n): return self.d.get(n)
 
-tiles_json = json.loads(open('app/src/main/assets/tileset/tileset.json').read())
+tiles_json = json.loads(open(os.path.join(ROOT, 'app/src/main/assets/tileset/tileset.json')).read())
 T = Tiles({k: v for k, v in tiles_json['tiles'].items()})
 
 def build_map():

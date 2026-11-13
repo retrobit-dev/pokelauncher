@@ -19,9 +19,11 @@ from __future__ import annotations
 import collections
 import glob
 import re
+import os
 import sys
 
-ROOT = "app/src/main/java"
+ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                    "app/src/main/java")
 
 # Kotlin default imports and platform types that never need an import statement
 AUTO = {

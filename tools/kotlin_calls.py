@@ -16,9 +16,11 @@ from __future__ import annotations
 
 import glob
 import re
+import os
 import sys
 
-ROOT = "app/src/main/java"
+ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                    "app/src/main/java")
 
 
 def params_of(decl: str) -> list[tuple[str, bool]]:

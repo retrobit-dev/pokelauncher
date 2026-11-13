@@ -2,7 +2,7 @@
 // layer survives: this is the round trip that decides whether a map authored in
 // the browser looks the same in the app.
 const fs=require('fs'), path=require('path');
-const ROOT='/home/user/pokelauncher';
+const ROOT = require('path').resolve(__dirname, '..');
 const src=fs.readFileSync(path.join(ROOT,'editor/app.js'),'utf8');
 class E{constructor(){this.style={};this.dataset={};this.hidden=false;this.textContent='';this.innerHTML='';
  this.classList={add(){},remove(){},toggle(){},contains(){return false}};this.children=[]}
