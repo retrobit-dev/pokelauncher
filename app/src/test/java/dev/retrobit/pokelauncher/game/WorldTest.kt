@@ -371,9 +371,11 @@ class WorldTest {
         world.waterDay = 2
         world.water(x, y)
         val food = world.food
+        val seeds = world.seeds
         val yield = world.harvest(x, y, day = 2)
         assertTrue(yield > 0)
         assertEquals(food + yield, world.food)
+        assertEquals("a harvest gives seed back", seeds + World.SEED_PER_HARVEST, world.seeds)
         assertNull(world.cropAt(x, y))
     }
 
@@ -431,6 +433,27 @@ class WorldTest {
         assertTrue(world.build(World.Item.STONE) is World.BuildResult.Built)
         assertFalse("you cannot walk through your own block", world.canStand(world.playerX + front.dx, world.playerY + front.dy))
         assertFalse("and stepping into it fails", world.step(front))
+    }
+
+    @Test
+    fun `fainting puts you home and costs half your ore`() {
+        val world = world()
+        val wood = world.wood
+        val stone = world.stone
+        assertFalse("a healthy player does not faint", world.faintIfDead())
+
+        // starve it out: tick until health is gone
+        var guard = 0
+        while (world.health > 0 && guard++ < 1000) {
+            world.tickSurvival(GameClock.atMinute(23 * 60), minutes = 30)
+        }
+        assertEquals(0, world.health)
+        assertTrue(world.faintIfDead())
+        assertEquals(world.map.spawnX, world.playerX)
+        assertEquals(world.map.spawnY, world.playerY)
+        assertEquals(World.FAINT_HEALTH, world.health)
+        assertEquals("half the wood is lost", wood / 2, world.wood)
+        assertEquals("half the stone is lost", stone / 2, world.stone)
     }
 
     // ---------------------------------------------------------------- saving

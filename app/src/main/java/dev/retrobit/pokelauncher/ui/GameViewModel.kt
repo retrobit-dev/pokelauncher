@@ -133,11 +133,14 @@ class GameViewModel(context: Context) : ViewModel() {
                 // is the same one the sun uses, so a session cannot water twice.
                 world.waterDay = dayOf()
                 val tick = world.tickSurvival(clock, minutes = 1)
+                val fainted = world.faintIfDead()
                 _state.value = current.copy(
                     clock = clock,
                     day = dayOf(),
                     tick = tick,
                     revision = current.revision + 1,
+                    message = if (fainted) "Kau pingsan. Bangun di rumah, sebagian barang hilang." else current.message,
+                    messageId = if (fainted) current.messageId + 1 else current.messageId,
                 )
                 persist()
             }

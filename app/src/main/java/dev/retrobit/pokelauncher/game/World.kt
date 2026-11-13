@@ -217,6 +217,10 @@ class World(
         crops.remove(GameMap.key(x, y))
         tilled.remove(GameMap.key(x, y))
         inventory[Item.FOOD] = (inventory[Item.FOOD] ?: 0) + HARVEST_YIELD
+        // A harvest returns seed, so the field is a loop rather than a one-shot
+        // resource. Without this the three starting seeds run out and farming
+        // dead-ends with no way back.
+        inventory[Item.SEED] = (inventory[Item.SEED] ?: 0) + SEED_PER_HARVEST
         return HARVEST_YIELD
     }
 
@@ -272,6 +276,30 @@ class World(
 
     private var hungerTimer = 0
     private var nightTimer = 0
+
+    /**
+     * What happens when the night wins.
+     *
+     * Minecraft puts you back at your bed with your pockets lighter, and that
+     * is the right shape here: the field survives, the day keeps going, and the
+     * cost is real but not a wipe. Returning `false` when the player is still
+     * standing keeps the caller honest (it only faints at zero).
+     */
+    fun faintIfDead(): Boolean {
+        if (health > 0) return false
+        playerX = map.spawnX
+        playerY = map.spawnY
+        facing = Direction.DOWN
+        health = FAINT_HEALTH
+        hunger = (hunger - 2).coerceAtLeast(0)
+        // Losing what you were carrying is the punishment: ore and wood, not
+        // the crops already in the ground.
+        for (item in listOf(Item.WOOD, Item.STONE, Item.FIBRE)) {
+            val lost = (inventory[item] ?: 0) / 2
+            inventory[item] = (inventory[item] ?: 0) - lost
+        }
+        return true
+    }
 
     /** Sleep in shelter to skip to morning: Minecraft's bed, Harvest Moon's inn. */
     fun sleep(hasShelter: Boolean): Boolean {
@@ -413,6 +441,8 @@ class World(
         const val FOOD_VALUE = 4
         const val SLEEP_HEAL = 4
         const val HARVEST_YIELD = 2
+        const val SEED_PER_HARVEST = 1
+        const val FAINT_HEALTH = 3
         const val REACH = 1
         const val LIGHT_RADIUS = 4
         const val MINUTES_PER_HUNGER = 25

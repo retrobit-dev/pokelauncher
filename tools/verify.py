@@ -362,10 +362,13 @@ def check_preview_assets() -> None:
         width, height = struct.unpack(">II", header[16:24])
         colour_type = header[25]  # 8 sig + 4 len + 4 tag + 4 w + 4 h + 1 depth
         if colour_type != 6:
-            fail(f"docs/{name} must be RGBA (colour type 6), got {colour_type}; "
-                 "the rounded bezel needs a transparent corner")
-        if (width, height) != (2628, 1668):
-            fail(f"docs/{name} is {width}x{height}, expected the landscape MatePad Mini frame")
+            fail(f"docs/{name} must be RGBA (colour type 6), got {colour_type}")
+        # 2560x1600 panel + 2*34 bezel + 2*72 bright page margin, from
+        # tools/render_tablet.py. The margin is what makes the preview a light
+        # page instead of a black slab.
+        if (width, height) != (2772, 1812):
+            fail(f"docs/{name} is {width}x{height}, expected the MatePad Mini frame "
+                 "with its bright page margin (2772x1812)")
 
     server = os.path.join(ROOT, "tools/preview_server.py")
     if not os.path.exists(server):
@@ -375,8 +378,9 @@ def check_preview_assets() -> None:
         if 'SHOT = "preview-tablet.png"' not in text:
             fail("preview_server.py must still serve the landscape MatePad Mini render")
         for needle, why in (
-            ('path in ("/", "/index.html")', "the editor must be the front page"),
-            ('"/device"', "the device render must stay reachable at /device"),
+            ('path in ("/", "/index.html", "/device", "/device.html")',
+             "the front page must be the device render, not the editor"),
+            ('"/editor"', "the editor must move to /editor, not the front page"),
             ('"/api/map"', "the editor saves through /api/map"),
             ('"johto-tileset.png"', "the palette reads the tileset atlas"),
         ):
@@ -390,20 +394,23 @@ def check_preview_assets() -> None:
     check_editor()
 
     check_punch_hole(os.path.join(docs, "preview-tablet.png"))
-    check_screen_is_opaque(os.path.join(docs, "preview-tablet.png"))
+    check_preview_screen(os.path.join(docs, "preview-tablet.png"))
 
 
-PAPER_CMYK = (251, 243, 220)   # HgColors.Paper #FBF3DC as RGBA bytes
+PAPER_CMYK = (251, 243, 220)    # HgColors.Paper #FBF3DC, the HUD panel
+PAGE_BRIGHT = (191, 227, 242)   # #BFE3F2, the sky-blue surround
+BEZEL_DARK = (16, 17, 18)       # #101112
+PANEL = (2560, 1600)
+BEZEL = 34
+PAD = 72
 
 
-def check_screen_is_opaque(path: str) -> None:
-    """The lit panel must actually show up: opaque, paper coloured, no UI.
+def check_preview_screen(path: str) -> None:
+    """The published shot: bright page, black frame, a world inside the panel.
 
-    Canvas defaults to alpha 0 so the bezel corners stay transparent. When the
-    screen is only filled with a colour and nothing paints over it, it is
-    copied in as a fully transparent rectangle, so the page background shows
-    through where the display should be - the render looks like a black slab.
-    Checking the header is not enough; sample real pixels.
+    Three things are easy to break and all three have been broken before:
+    the page turning black, the panel staying empty, and the device sliding
+    out of its margin. So sample all three regions by pixel.
     """
     decoded = decode_png(path)
     if decoded is None:
@@ -411,38 +418,52 @@ def check_screen_is_opaque(path: str) -> None:
     width, height, rows = decoded
 
     def pixel(x: int, y: int):
-        line = rows[y]
         i = x * 4
+        line = rows[y]
         return line[i], line[i + 1], line[i + 2], line[i + 3]
 
-    # The bezel is drawn as a dark frame, so the panel centre is a few percent
-    # inside the bitmap on every side.
-    inset = height // 8
-    centre = pixel(width // 2, height // 2)
-    if centre[3] != 255:
-        fail(f"the lit panel is transparent (alpha {centre[3]} at the centre); "
-             "Canvas needs alpha=255 for the screen fill")
-        return
-    if abs(centre[0] - PAPER_CMYK[0]) > 12 or abs(centre[2] - PAPER_CMYK[2]) > 12:
-        fail(f"the home screen should be empty HgColors.Paper, found {centre[:3]}")
+    # 1. the page: bright, opaque, all four margins
+    for x, y, where in ((2, 2, "top-left"), (width - 3, 2, "top-right"),
+                        (2, height - 3, "bottom-left"), (width - 3, height - 3, "bottom-right")):
+        sample = pixel(x, y)
+        if sample[3] != 255:
+            fail(f"preview page is transparent at the {where} corner (alpha {sample[3]})")
+        elif sample[0] < 150 or sample[2] < 150:
+            fail(f"preview page should be a bright sky, found {sample[:3]} at the {where} corner")
 
-    # Sample a grid inside the panel: still empty, still opaque.
-    off = []
-    for fy in (0.25, 0.5, 0.75):
-        for fx in (0.25, 0.5, 0.75):
-            x = int(width * fx) if inset < width * fx < width - inset else width // 2
-            y = int(height * fy) if inset < height * fy < height - inset else height // 2
+    # 2. the frame: a black bezel lives between the page and the panel
+    panel_x, panel_y = PAD + BEZEL, PAD + BEZEL
+    frame = pixel(panel_x - 12, height // 2)
+    if sum(frame[:3]) > 120:
+        fail(f"the bezel should be black, found {frame[:3]} just outside the panel")
+
+    # 3. the panel: the world, opaque, and not one flat colour
+    seen = set()
+    for fy in (0.2, 0.4, 0.6, 0.8):
+        for fx in (0.2, 0.4, 0.6, 0.8):
+            x = panel_x + int(PANEL[0] * fx)
+            y = panel_y + int(PANEL[1] * fy)
             sample = pixel(x, y)
-            if sample[3] != 255 or sample[:3] != centre[:3]:
-                off.append((x, y, sample))
-    if off:
-        fail(f"the home screen must stay clean and uniform, found {off[0]}")
+            if sample[3] != 255:
+                fail(f"the panel is transparent at {x},{y}; the screen must be opaque")
+                return
+            seen.add(sample[:3])
+    if len(seen) < 3:
+        fail(f"the panel looks empty, only {len(seen)} distinct colour(s): "
+             "the device render must show the in-game screen")
+        return
 
-    # And the body corner must still be transparent, so the rounded bezel reads
-    # on a white page instead of a hard black rectangle.
-    corner = pixel(1, 1)
-    if corner[3] != 0:
-        fail(f"body corner should be transparent, found alpha {corner[3]}")
+    # 4. the camera must not sit on top of the HUD. The lens occupies the
+    # panel's top-left corner; just past it the clock panel must be the paper
+    # colour, which is the whole point of insetting the HUD by the cutout.
+    hud = pixel(panel_x + 160, panel_y + 60)
+    if max(abs(hud[i] - PAPER_CMYK[i]) for i in range(3)) > 24:
+        fail(f"the clock panel should start past the camera, found {hud[:3]}")
+
+    # 5. the bright margin is uniform, so the frame never floats on a gradient
+    edge = pixel(6, height // 2)
+    if max(abs(edge[i] - PAGE_BRIGHT[i]) for i in range(3)) > 24:
+        fail(f"preview page should be #BFE3F2, found {edge[:3]}")
 
 
 def decode_png(path: str):
@@ -524,8 +545,10 @@ def check_punch_hole(path: str) -> None:
         line = rows[y]
         return (line[i] + line[i + 1] + line[i + 2]) / 3 < 45
 
-    # The black bezel is the outermost ring; the lit panel starts inside it.
-    bezel = max(8, height // 40)
+    # The published shot has a bright page margin around the black frame; the
+    # lit panel starts inside bezel + margin.
+    margin = PAD
+    bezel = max(8, height // 40) + margin
     inner_w, inner_h = width - 2 * bezel, height - 2 * bezel
 
     # A punch hole is a dark disc that is much darker than the UI around it.

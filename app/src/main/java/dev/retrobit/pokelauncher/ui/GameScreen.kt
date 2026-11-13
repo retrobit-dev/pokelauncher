@@ -26,6 +26,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.retrobit.pokelauncher.game.GameClock
@@ -56,6 +61,7 @@ fun GameHud(
     message: String?,
     messageId: Int,
     onOpenLauncher: () -> Unit,
+    onOpenMenu: () -> Unit,
     onEat: () -> Unit,
     onTill: () -> Unit,
     onPlaceLight: () -> Unit,
@@ -72,7 +78,16 @@ fun GameHud(
         }
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
+    // The MatePad Mini puts its camera inside the panel, top-left in landscape.
+    // Without this the clock would sit under the lens, which is exactly the bug
+    // the device render showed before the HUD learned about the cutout.
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .windowInsetsPadding(
+                WindowInsets.displayCutout.only(WindowInsetsSides.Top + WindowInsetsSides.Start),
+            ),
+    ) {
         Column(
             modifier = Modifier
                 .align(Alignment.TopStart)
@@ -102,6 +117,31 @@ fun GameHud(
                 color = HgColors.InkSoft,
                 fontWeight = FontWeight.Medium,
             )
+        }
+
+        // Top-right: the way into settings and the app list. It has to live in
+        // the world, because the world is the whole home screen: without this
+        // the menu sheet can never open.
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(12.dp)
+                .size(44.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(HgColors.Paper.copy(alpha = 0.94f))
+                .border(2.dp, HgColors.Ink, RoundedCornerShape(10.dp))
+                .clickable { onOpenMenu() },
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                repeat(3) {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 18.dp, height = 2.dp)
+                            .background(HgColors.Ink),
+                    )
+                }
+            }
         }
 
         // bottom-left: verb buttons, one tap each, no modifier keys on a tablet

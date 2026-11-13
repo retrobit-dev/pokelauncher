@@ -176,7 +176,7 @@ class World {
     if (!c) return 0;
     if (c.growth < DAYS_TO_RIPE) return 0;
     this.crops.delete(`${x},${y}`); this.tilled.delete(`${x},${y}`);
-    this.inventory.FOOD += 2;
+    this.inventory.FOOD += 2; this.inventory.SEED += 1;
     return 2;
   }
   cropAt(x, y) { return this.crops.get(`${x},${y}`) || null; }
@@ -334,7 +334,9 @@ const foodBefore = f.food;
 check('menunggu tidak mematangkan', f.harvest(2, 3, 99), 0);
 f.waterDay = 40; check('siraman pertama', f.water(2, 3), true);
 f.waterDay = 41; check('siraman kedua', f.water(2, 3), true);
+const seedPacket = f.seeds;
 check('panen setelah 2 siraman', f.harvest(2, 3, 41), 2);
+check('panen mengembalikan bibit', f.seeds, seedPacket + 1);
 check('makanan bertambah', f.food, foodBefore + 2);
 
 const c = new Camera(0, 0, 320, 240, 1600, 1600);

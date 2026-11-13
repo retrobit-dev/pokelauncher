@@ -6,10 +6,13 @@ Device reference (Huawei MatePad Mini, 2025):
   body 198.6 x 127.3 x 5.2 mm -> ~4.4 mm bezel all round, 32 MP punch hole
   camera inside the display.
 
-The screen itself is empty: a clean home screen filled with the launcher's
-paper colour, no clock, cards, cartridges or wallpaper - exactly what
-LauncherScreen's HomeSurface draws now. The frame is a flat black bezel: no
-aluminium, no keys, no shadow, no labels.
+The screen shows the world: the starter village with the trainer, the field,
+the torches and the HUD, exactly as `tools/mock_ingame.py` draws it. The frame
+is a flat black bezel: no aluminium, no keys, no shadow.
+
+The page around the device is a bright sky blue, so the black bezel reads as a
+device floating on a light desk rather than a black rectangle on a black page.
+The padding inside the PNG is what `/device` shows as that bright surround.
 
 Everything is pure Python (no Pillow) so the script runs anywhere.
 
@@ -29,8 +32,14 @@ def rgb(value: str) -> tuple[int, int, int]:
     return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]
 
 
-# Same colour as HgColors.Paper in Theme.kt: the clean home screen fill.
+# Same colour as HgColors.Paper in Theme.kt, used when no render is available.
 PAPER = rgb("FBF3DC")
+
+# The bright surround for the published shot: a clear morning sky, close to the
+# daylight palette of the tileset so the device sits on a light page.
+PAGE = rgb("BFE3F2")
+PAGE_EDGE = rgb("9FD2E6")
+SHADOW = rgb("7FB6CC")
 
 # Punch hole: 32 MP selfie camera. In portrait the hole sits in the top right
 # corner of the 1600 x 2560 panel; turning the tablet the usual way for
@@ -180,6 +189,71 @@ class Canvas:
         return len(png)
 
 
+class Rgba:
+    """Just enough of an image: width, height and flat RGBA bytes."""
+
+    def __init__(self, w: int, h: int, buf: bytearray) -> None:
+        self.w, self.h, self.buf = w, h, buf
+
+
+def read_png(path: str) -> Rgba:
+    """Decodes an 8-bit RGBA PNG, all five row filters.
+
+    Written out rather than imported because the whole preview pipeline is
+    standard library only; a PNG reader that only handles filter 0 would fail
+    on any file a real encoder wrote.
+    """
+    blob = open(path, "rb").read()
+    if blob[:8] != b"\x89PNG\r\n\x1a\n":
+        raise ValueError("not a PNG")
+    pos, idat, width, height = 8, b"", 0, 0
+    while pos + 8 <= len(blob):
+        length = struct.unpack(">I", blob[pos:pos + 4])[0]
+        tag = blob[pos + 4:pos + 8]
+        body = blob[pos + 8:pos + 8 + length]
+        if tag == b"IHDR":
+            width, height, depth, colour = struct.unpack(">IIBB", body[:10])
+            if depth != 8 or colour != 6:
+                raise ValueError("only 8-bit RGBA PNGs are supported")
+        elif tag == b"IDAT":
+            idat += body
+        elif tag == b"IEND":
+            break
+        pos += 12 + length
+    raw = zlib.decompress(idat)
+    stride = width * 4
+    out = bytearray(stride * height)
+    prev = bytearray(stride)
+    o = 0
+    for y in range(height):
+        kind = raw[o]
+        o += 1
+        line = bytearray(raw[o:o + stride])
+        o += stride
+        if kind == 1:      # Sub
+            for i in range(4, stride):
+                line[i] = (line[i] + line[i - 4]) & 255
+        elif kind == 2:    # Up
+            for i in range(stride):
+                line[i] = (line[i] + prev[i]) & 255
+        elif kind == 3:    # Average
+            for i in range(stride):
+                left = line[i - 4] if i >= 4 else 0
+                line[i] = (line[i] + ((left + prev[i]) >> 1)) & 255
+        elif kind == 4:    # Paeth
+            for i in range(stride):
+                a = line[i - 4] if i >= 4 else 0
+                b = prev[i]
+                c = prev[i - 4] if i >= 4 else 0
+                p = a + b - c
+                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+                pr = a if (pa <= pb and pa <= pc) else (b if pb <= pc else c)
+                line[i] = (line[i] + pr) & 255
+        out[y * stride:(y + 1) * stride] = line
+        prev = line
+    return Rgba(width, height, out)
+
+
 def mix(a: tuple[int, int, int], b: tuple[int, int, int], t: float) -> tuple[int, int, int]:
     return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))  # type: ignore[return-value]
 
@@ -243,17 +317,80 @@ FONT = {
 
 # ------------------------------------------------------------------- device
 class Device:
-    """One MatePad Mini in landscape, screen inside a black bezel."""
+    """One MatePad Mini in landscape, screen inside a black bezel.
 
-    BEZEL = 34
+    `PAD` is the bright margin around the device. It exists so the published
+    PNG is a light page with a tablet on it, not a black slab that merges with
+    a dark browser. A short soft shadow makes it sit on the page.
+    """
+
+    BEZEL = 34                       # black glass around the panel, in px
     CORNER = 62
-    SCREEN_CORNER = 30
+    SCREEN_CORNER = dp(10.0)         # panel corner radius: dp, like the device
+    PAD = 72
 
     def __init__(self, w: int, h: int) -> None:
         self.w, self.h = w, h            # display size in px
-        self.outer_w = w + 2 * self.BEZEL
-        self.outer_h = h + 2 * self.BEZEL
-        self.cv = Canvas(self.outer_w, self.outer_h, BEZEL_BLACK, alpha=0)
+        self.body_w = w + 2 * self.BEZEL
+        self.body_h = h + 2 * self.BEZEL
+        self.outer_w = self.body_w + 2 * self.PAD
+        self.outer_h = self.body_h + 2 * self.PAD
+        self.cv = Canvas(self.outer_w, self.outer_h, PAGE, alpha=255)
+        self.world: Canvas | None = None
+
+    # -- screen content ------------------------------------------------
+    def draw_world(self) -> None:
+        """Copies the in-game mockup onto the panel, scaling to fit.
+
+        `tools/mock_ingame.py` owns the picture. Loading it instead of copying
+        the layout here means the preview cannot drift from the mockup the
+        README publishes: one renderer, one truth.
+
+        The picture is fitted, not stretched: a 16:10 render fills the panel
+        exactly, and anything else would be letterboxed on the page colour
+        rather than distorted. The camera punches through afterwards, so the
+        parts of the HUD the app itself keeps clear of the cutout are hidden
+        here too - the render tells the truth about the device.
+        """
+        here = os.path.dirname(os.path.abspath(__file__))
+        source = os.path.join(here, "..", "docs", "editor", "ingame.png")
+        image = None
+        if os.path.exists(source):
+            try:
+                image = read_png(source)
+            except (OSError, ValueError, zlib.error):
+                image = None
+        if image is None or image.w == 0 or image.h == 0:
+            self.world = self.draw_screen()
+            return
+
+        panel = Canvas(self.w, self.h, PAGE_EDGE, alpha=255)
+        scale = min(self.w / image.w, self.h / image.h)
+        out_w, out_h = max(1, int(image.w * scale)), max(1, int(image.h * scale))
+        off_x, off_y = (self.w - out_w) // 2, (self.h - out_h) // 2
+        for yy in range(out_h):
+            sy = min(image.h - 1, yy * image.h // out_h)
+            row = sy * image.w
+            dst_y = (off_y + yy) * self.w
+            for xx in range(out_w):
+                sx = min(image.w - 1, xx * image.w // out_w)
+                i = (row + sx) * 4
+                o = (dst_y + off_x + xx) * 4
+                panel.buf[o] = image.buf[i]
+                panel.buf[o + 1] = image.buf[i + 1]
+                panel.buf[o + 2] = image.buf[i + 2]
+        self.round_panel(panel)
+        self.world = panel
+
+    def round_panel(self, cv: Canvas) -> None:
+        """Rounds the OLED corners, like the real panel cut."""
+        corner = int(self.SCREEN_CORNER)
+        for cx, cy in ((0, 0), (self.w - corner, 0), (0, self.h - corner),
+                       (self.w - corner, self.h - corner)):
+            for yy in range(int(cy), int(cy) + corner):
+                for xx in range(int(cx), int(cx) + corner):
+                    if not round_rect_contains(xx + 0.5, yy + 0.5, 0, 0, self.w, self.h, corner):
+                        cv.blend(xx, yy, BEZEL_DARK, 1.0)
 
     # -- screen content ------------------------------------------------
     def draw_screen(self) -> Canvas:
@@ -269,7 +406,7 @@ class Device:
         cv = Canvas(self.w, self.h, PAPER, alpha=255)
 
         # round the panel corners, like the real OLED cut
-        corner = self.SCREEN_CORNER
+        corner = int(self.SCREEN_CORNER)
         for cx, cy in ((0, 0), (self.w - corner, 0), (0, self.h - corner),
                        (self.w - corner, self.h - corner)):
             for yy in range(int(cy), int(cy) + corner):
@@ -287,17 +424,25 @@ class Device:
         same rounded corners as the tablet.
         """
         cv = self.cv
-        ow, oh = self.outer_w, self.outer_h
+        ow, oh = self.body_w, self.body_h
+        ox, oy = self.PAD, self.PAD
+
+        # soft drop shadow: three passes, widest and faintest last, so the
+        # tablet lifts off the page without a blur filter we do not have
+        for spread, alpha in ((dp(16), 0.10), (dp(9), 0.12), (dp(4), 0.16)):
+            cv.rect(ox - spread + dp(2), oy - spread + dp(6),
+                    ow + 2 * spread, oh + 2 * spread, SHADOW,
+                    self.CORNER + spread, alpha=alpha)
 
         # the frame is a single flat colour, clipped to the body corner radius
         for yy in range(oh):
-            cv.rect(0, yy, ow, 1, BEZEL_BLACK,
+            cv.rect(ox, oy + yy, ow, 1, BEZEL_BLACK,
                     mask=lambda px, py, yy=yy: round_rect_contains(
-                        px, py, 0, 0, ow, oh, self.CORNER))
+                        px, py, ox, oy, ow, oh, self.CORNER))
 
         # black glass around the lit panel, with a hairline so the edge of the
         # screen reads as an edge instead of a colour change
-        cv.rect(self.BEZEL - dp(1.6), self.BEZEL - dp(1.6),
+        cv.rect(ox + self.BEZEL - dp(1.6), oy + self.BEZEL - dp(1.6),
                 self.w + dp(3.2), self.h + dp(3.2), BEZEL_RIM,
                 self.SCREEN_CORNER + dp(1.6), alpha=0.55)
 
@@ -311,8 +456,8 @@ class Device:
         """
         cv = self.cv
         radius = dp(CAMERA_RADIUS_DP)
-        cam_x = self.BEZEL + dp(CAMERA_INSET_DP) + radius
-        cam_y = self.BEZEL + dp(CAMERA_INSET_DP) + radius
+        cam_x = self.PAD + self.BEZEL + dp(CAMERA_INSET_DP) + radius
+        cam_y = self.PAD + self.BEZEL + dp(CAMERA_INSET_DP) + radius
 
         # dark rim, then the lens barrel, then the glass reflection
         ring = radius + dp(0.6)
@@ -322,14 +467,17 @@ class Device:
         cv.disc(cam_x - dp(2.2), cam_y - dp(2.2), radius * 0.24, rgb("6F8A96"), alpha=0.9)
 
     def render(self) -> Canvas:
-        # body first (opaque bezel, transparent outside the rounded corners),
-        # then the screen is copied in, then the camera sits on top of the UI
+        # screen first, then the frame is painted around it. The bezel has to go
+        # on top because the page is already laid down: drawing the screen after
+        # the body is what used to leave the panel showing the page colour.
+        self.world = None
+        self.draw_world()
         self.draw_body()
-        screen = self.draw_screen()
-        for yy in range(self.h):
-            src = yy * self.w * 4
-            dst = ((yy + self.BEZEL) * self.outer_w + self.BEZEL) * 4
-            self.cv.buf[dst:dst + self.w * 4] = screen.buf[src:src + self.w * 4]
+        if self.world is not None:
+            for yy in range(self.h):
+                src = yy * self.w * 4
+                dst = ((yy + self.PAD + self.BEZEL) * self.outer_w + self.PAD + self.BEZEL) * 4
+                self.cv.buf[dst:dst + self.w * 4] = self.world.buf[src:src + self.w * 4]
         self.draw_hardware()
         return self.cv
 

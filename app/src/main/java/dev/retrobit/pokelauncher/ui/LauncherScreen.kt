@@ -99,6 +99,7 @@ fun LauncherScreen(viewModel: LauncherViewModel) {
                 HomeSurface(
                     game = game,
                     onOpenLauncher = { showDrawer = true },
+                    onOpenMenu = { showMenu = true },
                 )
             }
 
@@ -278,6 +279,7 @@ fun LauncherScreen(viewModel: LauncherViewModel) {
 private fun HomeSurface(
     game: GameViewModel,
     onOpenLauncher: () -> Unit,
+    onOpenMenu: () -> Unit,
 ) {
     val state by game.state.collectAsState()
     val world = state.world
@@ -348,6 +350,7 @@ private fun HomeSurface(
             message = state.message,
             messageId = state.messageId,
             onOpenLauncher = onOpenLauncher,
+            onOpenMenu = onOpenMenu,
             onEat = game::eat,
             onTill = game::useUnderfoot,
             onPlaceLight = game::craftLight,

@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Serves the Johto map editor and stays the home of the MatePad preview.
+"""Serves the MatePad preview, with the map editor on a side route.
 
-    python3 tools/preview_server.py            # editor at http://localhost:8000
+    python3 tools/preview_server.py            # preview at http://localhost:8000
     python3 tools/preview_server.py --port 9000
 
 Routes
-  /                     the map editor (grid of 16x16 tiles filling the screen)
-  /device               the published MatePad Mini render, full page
+  /                     the MatePad Mini render, and nothing else
+  /device               the same render (kept for old links)
+  /editor               the map editor (grid of 16x16 tiles filling the screen)
   /editor/app.js        editor logic
   /editor/app.css       editor styles
   /docs/tileset/*       the tileset atlas and its index, read by the palette
@@ -44,41 +45,47 @@ DEVICE_PAGE = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PokeLauncher</title>
 <style>
-  html, body { margin: 0; min-height: 100%; }
+  /* The page is the bright margin around the device. The render already carries
+     that same sky-blue border, so the image sits on the page with no seam. */
+  html, body { margin: 0; height: 100%; background: #bfe3f2; }
   body {
-    min-height: 100vh;
-    display: grid; place-items: center;
-    padding: clamp(8px, 2.5vw, 28px);
-    background: #ffffff;
+    display: grid;
+    place-items: center;
+    padding: clamp(4px, 1.5vw, 18px);
   }
   img {
     display: block;
     max-width: 100%;
-    max-height: calc(100vh - 2 * clamp(8px, 2.5vw, 28px));
-    width: auto; height: auto;
+    max-height: calc(100dvh - 2 * clamp(4px, 1.5vw, 18px));
+    width: auto;
+    height: auto;
+    image-rendering: auto;
   }
 </style>
 </head>
 <body>
-<img src="/docs/__SHOT__" alt="PokeLauncher di MatePad Mini">
+<img src="/docs/__SHOT__" alt="PokeLauncher di MatePad Mini" width="2772" height="1812">
 </body>
 </html>
 """
 
 
 class PreviewHandler(http.server.BaseHTTPRequestHandler):
-    """Serves the editor, its assets, the tileset and the device render."""
+    """Serves the device preview, the editor, the tileset and the render."""
 
     # -- routing -------------------------------------------------------
     def do_GET(self) -> None:  # noqa: N802 - stdlib naming
         path = urllib.parse.urlsplit(self.path).path
 
-        if path in ("/", "/index.html"):
-            self.send_file(os.path.join(EDITOR, "index.html"), "text/html; charset=utf-8")
-            return
-        if path in ("/device", "/device.html"):
+        if path in ("/", "/index.html", "/device", "/device.html"):
+            # The front page is the device, not the editor: the preview exists
+            # to show what the app looks like, and the editor is a tool you go
+            # looking for. /device stays as an alias so old links keep working.
             self.respond(DEVICE_PAGE.replace("__SHOT__", SHOT).encode("utf-8"),
                          "text/html; charset=utf-8")
+            return
+        if path in ("/editor", "/editor/", "/editor/index.html"):
+            self.send_file(os.path.join(EDITOR, "index.html"), "text/html; charset=utf-8")
             return
         if path.startswith("/editor/"):
             name = posixpath.basename(path)

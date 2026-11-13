@@ -112,7 +112,7 @@ class World:
         c = self.crops.get((x, y))
         if not c or c['growth'] < DAYS_TO_RIPE: return 0
         del self.crops[(x, y)]; self.tilled.discard((x, y))
-        self.inv['FOOD'] += 2; return 2
+        self.inv['FOOD'] += 2; self.inv['SEED'] += 1; return 2
     def eat(self):
         if self.hunger >= MAX_HUNGER or self.inv['FOOD'] <= 0: return False
         self.inv['FOOD'] -= 1
@@ -134,6 +134,14 @@ class World:
             else:
                 self.nt = 0
         return exposed
+
+    def faint_if_dead(self, spawn=(2, 3)):
+        if self.health > 0: return False
+        self.x, self.y = spawn
+        self.health = 3; self.hunger = max(0, self.hunger - 2)
+        for k in ('WOOD', 'STONE', 'FIBRE'):
+            self.inv[k] -= self.inv[k] // 2
+        return True
 
 fails = 0
 def check(label, actual, expected):
@@ -194,7 +202,9 @@ check('siram menumbuhkan', f.water(2,3), True)
 check('baru satu siraman', f.harvest(2,3,40), 0)
 f.waterDay = 41
 check('siraman kedua', f.water(2,3), True)
+seeds_before = f.inv['SEED']
 check('panen setelah dua siraman', f.harvest(2,3,41), 2)
+check('panen mengembalikan bibit', f.inv['SEED'], seeds_before + 1)
 f.waterDay = 5
 check('siram sekali', (f.water(2,3), f.water(2,3)), (False, False))  # harvested already
 f2 = World(); f2.till(2,3); f2.plant(2,3,0); f2.waterDay = 5
@@ -204,6 +214,17 @@ f2.waterDay = 6
 check('siram hari 6', f2.water(2,3), True)
 
 check('makan saat kenyang ditolak', World().eat(), False)
+
+# --- death is a setback, not a wipe
+print('\n-- pingsan')
+p1 = World(); p1.tick(True, 60)
+p1.health = 0
+wood_before = p1.inv['WOOD']
+check('sehat tidak pingsan', World().faint_if_dead(), False)
+check('pingsan', p1.faint_if_dead(), True)
+check('bangun di rumah', (p1.x, p1.y), (2, 3))
+check('nyawa kembali 3', p1.health, 3)
+check('sebagian kayu hilang', p1.inv['WOOD'], wood_before - wood_before // 2)
 
 # --- builder: a block you place stops you, exactly like a map tile
 print('\n-- membangun')
