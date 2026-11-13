@@ -4,18 +4,14 @@ Launcher Android native bergaya **Pokémon HeartGold / SoulSilver**: home screen
 enam slot "party", app drawer, jam HeartGold, dan setelan tampilan. Seluruh ilustrasi
 (langit Johto, bukit, Poké Ball, kartrid GBA) digambar dari kode Compose — tanpa aset berhak cipta.
 
-| Ponsel (412 dp) | Tablet landscape (Huawei MatePad Mini, 853 dp) | Tablet portrait (533 dp) |
-| --- | --- | --- |
-| ![Pratinjau ponsel](docs/preview-home.png) | ![Pratinjau tablet landscape](docs/preview-tablet.png) | ![Pratinjau tablet portrait](docs/preview-tablet-portrait.png) |
-
-| HarmonyOS 4.3 landscape | HarmonyOS 4.3 portrait |
+| MatePad Mini landscape | MatePad Mini portrait |
 | --- | --- |
-| ![Pratinjau HarmonyOS landscape](docs/preview-harmonyos.png) | ![Pratinjau HarmonyOS portrait](docs/preview-harmonyos-portrait.png) |
+| ![Pratinjau MatePad Mini landscape](docs/preview-tablet.png) | ![Pratinjau MatePad Mini portrait](docs/preview-tablet-portrait.png) |
 
-> Pratinjau dibuat oleh `tools/render_preview.py` dan `tools/render_tablet.py` memakai palet warna
-> asli dari `ui/theme/Theme.kt` dan tata letak `LauncherScreen.kt`. Ini pratinjau desain, bukan
-> render emulator. Mockup tablet memakai dimensi resmi MatePad Mini (8.8", 2560 × 1600, 343 ppi,
-> bezel ~4.4 mm, punch hole kamera di dalam layar).
+> Dua render di atas menempatkan layar launcher di dalam bezel **Huawei MatePad Mini**
+> (8.8", 2560 × 1600, 343 ppi, bezel ~4.4 mm, punch-hole kamera di dalam layar), dibuat oleh
+> `tools/render_tablet.py` memakai palet asli `ui/theme/Theme.kt` dan tata letak
+> `LauncherScreen.kt`. Ini pratinjau desain, bukan render emulator.
 
 ### Perilaku di layar besar
 
@@ -25,11 +21,6 @@ enam slot "party", app drawer, jam HeartGold, dan setelan tampilan. Seluruh ilus
 | ≥ 700 dp | Kartu pemain satu baris dengan tombol di kanan, enam kartrid sejajar, blok party di tengah, status card satu baris, setelan jadi panel samping 380 dp |
 
 ### Huawei MatePad Mini (HarmonyOS 4.3)
-
-`tools/render_harmonyos.py` menggambar ulang layar dengan chrome sistem HarmonyOS 4
-(status bar 27 dp berisi jam, wifi, sinyal, baterai; gesture bar 16 dp) dan inset itu ikut
-menggeser konten persis seperti `safeDrawingPadding()` di Compose. Di portrait jam status bar
-digeser ke kanan punch-hole, seperti perilaku EMUI.
 
 HarmonyOS **4.3.0 masih berbasis AOSP dan melaporkan API 31 (Android 12)**, jadi APK Android
 dipasang dan dijalankan native — tidak perlu HarmonyOS NEXT / AppGallery. Beberapa konsekuensinya:
@@ -74,8 +65,8 @@ app/src/main/java/dev/retrobit/pokelauncher/
 │   ├── screens/                 App drawer, settings, menu sheet, app info, dialog
 │   └── theme/                   Palet HeartGold + 3 font pixel
 └── res/                         strings (id + en), tema, ikon adaptive
-tools/                           Skrip verifikasi & render pratinjau
-docs/                            Gambar pratinjau
+tools/                           Skrip verifikasi, render & server pratinjau
+docs/                            Render MatePad Mini (landscape + portrait)
 licenses/                        Lisensi OFL untuk font
 ```
 
@@ -141,10 +132,8 @@ dijalankan di sini. Sebagai gantinya ada dua skrip pemeriksaan deterministik:
 ```bash
 python3 tools/static_check.py   # XML valid, referensi @resource, impor & delimiter Kotlin
 python3 tools/verify.py         # alias version catalog, call-site Compose, kunci strings id/en
-python3 tools/render_preview.py  # regenerasi docs/preview-home.png (ponsel)
-python3 tools/render_tablet.py   # regenerasi kedua pratinjau tablet + bezel
-python3 tools/render_harmonyos.py # pratinjau dengan status bar + navigation bar EMUI
-python3 tools/preview_server.py  # pratinjau interaktif di http://localhost:8000
+python3 tools/render_tablet.py   # regenerasi kedua render MatePad Mini
+python3 tools/preview_server.py  # halaman pratinjau di http://localhost:8000
 ```
 
 Keduanya lulus tanpa error pada commit ini. Tetap jalankan `./gradlew assembleDebug` sekali di
@@ -152,17 +141,16 @@ mesin Anda; jika ada error kompilasi, kirimkan log-nya ke sesi ini untuk diperba
 
 ## Pratinjau interaktif (lokal)
 
-`preview/` berisi halaman statis bergaya HeartGold untuk melihat semua render sekaligus:
+Halaman pratinjau hanya menampilkan **dua render MatePad Mini** (landscape dan portrait), dibuat
+langsung oleh server dari `docs/`:
 
 ```bash
-python3 tools/preview_server.py          # http://localhost:8000
+python3 tools/preview_server.py           # http://localhost:8000
 python3 tools/preview_server.py --port 9000
 ```
 
-Halaman ini membaca PNG langsung dari `docs/`, jadi setelah menjalankan salah satu renderer
-cukup refresh browser. Fitur: tab perangkat (ponsel, tablet landscape/portrait, HarmonyOS),
-tombol perbesar 1:1, thumbnail, dan navigasi panah kiri/kanan. Server-nya hanya mengekspos
-`preview/` dan `docs/` — sisa repo tidak bisa diakses.
+Setelah `tools/render_tablet.py` dijalankan, cukup refresh browser. Server hanya menyajikan
+`/docs/preview-tablet*.png`; sisa repo tidak bisa diakses.
 
 ## Build APK lewat GitHub Actions
 

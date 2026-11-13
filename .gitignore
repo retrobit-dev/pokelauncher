@@ -12,3 +12,7 @@
 *.aab
 *.keystore
 !debug.keystore
+
+# python bytecode from the preview tooling
+__pycache__/
+*.pyc

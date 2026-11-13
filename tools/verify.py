@@ -341,6 +341,39 @@ def check_home_role_flow() -> None:
 
 
 
+def check_preview_assets() -> None:
+    """The preview must stay a MatePad Mini mockup: two renders and one server."""
+    docs = os.path.join(ROOT, "docs")
+    expected = {"preview-tablet.png", "preview-tablet-portrait.png"}
+    present = {n for n in os.listdir(docs) if n.endswith(".png")}
+    if present != expected:
+        fail(f"docs/ should hold only {sorted(expected)}, found {sorted(present)}")
+
+    for name in expected:
+        path = os.path.join(docs, name)
+        if not os.path.exists(path):
+            continue
+        import struct
+        with open(path, "rb") as handle:
+            header = handle.read(24)
+        if header[:8] != b"\x89PNG\r\n\x1a\n":
+            fail(f"docs/{name} is not a PNG")
+            continue
+        width, height = struct.unpack(">II", header[16:24])
+        if (width, height) not in {(2628, 1668), (1668, 2628)}:
+            fail(f"docs/{name} is {width}x{height}, expected the MatePad Mini frame")
+
+    server = os.path.join(ROOT, "tools/preview_server.py")
+    if not os.path.exists(server):
+        fail("tools/preview_server.py missing")
+    else:
+        text = open(server, encoding="utf-8").read()
+        if "SHOTS = (\"preview-tablet.png\", \"preview-tablet-portrait.png\")" not in text:
+            fail("preview_server.py must serve only the two MatePad Mini renders")
+
+
+
+
 def main() -> int:
     check_gradle()
     check_kotlin_call_sites()
@@ -351,6 +384,7 @@ def main() -> int:
     check_string_escapes()
     check_harmonyos_compat()
     check_home_role_flow()
+    check_preview_assets()
 
     for problem in problems:
         print("FAIL", problem)

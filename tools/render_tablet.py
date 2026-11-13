@@ -50,8 +50,10 @@ HILL_FAR = rgb("AFC79A")
 HILL_MID = rgb("8FAF74")
 HILL_NEAR = rgb("7E9C63")
 GRASS = rgb("5F7F4C")
-BODY_TOP = rgb("E8EAE4")
-BODY_BOTTOM = rgb("C6CCC4")
+BODY_TOP = rgb("EDEFE9")
+BODY_MID = rgb("DCE0D9")
+BODY_BOTTOM = rgb("C2C8C0")
+KEY_EDGE = rgb("ADB4AC")
 BODY_EDGE = rgb("979F97")
 BEZEL_DARK = rgb("15181A")
 
@@ -154,18 +156,6 @@ class Canvas:
                 for xx in range(x_from, x_to):
                     self.blend(xx, yy, colour, alpha)
 
-    def ring(self, cx: float, cy: float, r: float, width: float,
-             colour: tuple[int, int, int], alpha: float = 1.0) -> None:
-        """Hollow circle, used for the wifi glyph."""
-        outer = r + width / 2
-        for yy in range(max(0, int(cy - outer - 1)), min(self.h, int(cy + outer + 2))):
-            for xx in range(max(0, int(cx - outer - 1)), min(self.w, int(cx + outer + 2))):
-                distance = math.hypot(xx + 0.5 - cx, yy + 0.5 - cy)
-                cover = min(1.0, max(0.0, outer - distance + 0.5)) * \
-                        min(1.0, max(0.0, distance - (r - width / 2) + 0.5))
-                if cover > 0:
-                    self.blend(xx, yy, colour, alpha * cover)
-
     def gradient_rect(self, y0: float, y1: float, top: tuple[int, int, int],
                       bottom: tuple[int, int, int]) -> None:
         for yy in range(max(0, int(y0)), min(self.h, int(y1))):
@@ -194,21 +184,6 @@ class Canvas:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         open(path, "wb").write(png)
         return len(png)
-
-
-def arc_ring(cv: "Canvas", cx: float, cy: float, r: float, width: float,
-             colour: tuple[int, int, int], alpha: float = 1.0) -> None:
-    """Upper half of a ring: the wifi fan segment."""
-    outer = r + width / 2
-    for yy in range(max(0, int(cy - outer - 1)), min(cv.h, int(cy) + 1)):
-        for xx in range(max(0, int(cx - outer - 1)), min(cv.w, int(cx + outer + 2))):
-            if yy + 0.5 > cy:
-                continue
-            distance = math.hypot(xx + 0.5 - cx, yy + 0.5 - cy)
-            cover = min(1.0, max(0.0, outer - distance + 0.5)) * \
-                    min(1.0, max(0.0, distance - (r - width / 2) + 0.5))
-            if cover > 0:
-                cv.blend(xx, yy, colour, alpha * cover)
 
 
 def mix(a: tuple[int, int, int], b: tuple[int, int, int], t: float) -> tuple[int, int, int]:
@@ -483,11 +458,8 @@ class Device:
     CORNER = 62
     SCREEN_CORNER = 30
 
-    def __init__(self, w: int, h: int, inset_top: int = 0, inset_bottom: int = 0) -> None:
+    def __init__(self, w: int, h: int) -> None:
         self.w, self.h = w, h            # display size in px
-        # Window insets, like safeDrawingPadding() sees them on a real device.
-        self.inset_top = int(inset_top)
-        self.inset_bottom = int(inset_bottom)
         self.wide = w >= dp(700)         # same rule as LauncherScreen.kt
         self.outer_w = w + 2 * self.BEZEL
         self.outer_h = h + 2 * self.BEZEL
@@ -545,48 +517,6 @@ class Device:
                 alpha = 0.22 + (0.60 - 0.22) * k
                 colour = PAPER
             cv.rect(0, yy, self.w, 1, colour, alpha=alpha)
-
-    # -- system bars ----------------------------------------------------
-    def draw_system_bars(self, cv: Canvas, clock: str = "21:07") -> None:
-        """Status bar and navigation bar as EMUI 13 (HarmonyOS 4) draws them.
-
-        The launcher is edge to edge with transparent bars, so the wallpaper
-        shows through; only the glyphs and the gesture pill are painted.
-        """
-        text_tint = INK
-        # status bar: clock left, indicator cluster right
-        bar_h = self.inset_top
-        if bar_h:
-            scale = ts(2.4)
-            mid = bar_h / 2 + 1
-            # EMUI pushes status bar content past the punch hole; in portrait
-            # the camera sits exactly where the clock would go.
-            clock_x = dp(17) if self.wide else dp(44) + dp(13)
-            draw_text(cv, clock_x, mid - 7 * scale / 2, clock, text_tint, scale)
-            # wifi: three concentric arcs opening upwards
-            wifi_x, wifi_y = self.w - dp(74), mid + dp(3.4)
-            for index in range(3):
-                r = dp(2.6) + index * dp(2.4)
-                arc_ring(cv, wifi_x, wifi_y, r, max(1.0, dp(0.55)),
-                               text_tint, alpha=0.95 - index * 0.12)
-            cv.disc(wifi_x, wifi_y, dp(1.1), text_tint)
-            # mobile signal: four bars
-            for index in range(4):
-                h = dp(2.5) + index * dp(2.0)
-                cv.rect(self.w - dp(48) + index * dp(4.2), mid + dp(3) - h, dp(3), h,
-                        text_tint, dp(0.8))
-            # battery: outline + fill
-            bat_x, bat_w, bat_h = self.w - dp(27), dp(17), dp(8.6)
-            cv.rect(bat_x, mid - bat_h / 2, bat_w, bat_h, text_tint, dp(2))
-            cv.rect(bat_x + dp(0.9), mid - bat_h / 2 + dp(0.9),
-                    (bat_w - dp(1.8)) * 0.72, bat_h - dp(1.8), text_tint, dp(1.4))
-            cv.rect(bat_x + bat_w + dp(0.6), mid - dp(1.6), dp(1.4), dp(3.2), text_tint, dp(0.6))
-
-        # navigation: gesture pill centred, on whichever edge the bar sits
-        if self.inset_bottom:
-            pill_w, pill_h = dp(48), dp(1.6)
-            pill_y = self.h - self.inset_bottom / 2 - pill_h / 2
-            cv.rect((self.w - pill_w) / 2, pill_y, pill_w, pill_h, INK, pill_h / 2, alpha=0.55)
 
     # -- composables ---------------------------------------------------
     def top_bar(self, cv: Canvas, margin: float, y: float) -> float:
@@ -722,17 +652,16 @@ class Device:
             draw_text(cv, grid_x + dp(46), status_y + dp(8) + 7 * ts(4) + dp(2),
                       hint, INK_SOFT, ts(2))
 
-    def draw_screen(self, system_bars: bool = False) -> Canvas:
+    def draw_screen(self) -> Canvas:
         cv = Canvas(self.w, self.h, SKY_TOP)
         self.wallpaper(cv)
         self.scrim(cv)
 
         margin = dp(16)
-        y = self.inset_top + dp(10)
+        y = dp(10)
         y += self.top_bar(cv, margin, y) + dp(10)
         y += self.player_card(cv, margin, y, self.w - margin * 2) + dp(10)
-        self.party_grid(cv, margin, y, self.w - margin * 2, y,
-                        self.h - self.inset_bottom - dp(10))
+        self.party_grid(cv, margin, y, self.w - margin * 2, y, self.h - dp(10))
 
         # round the panel corners, like the real OLED cut
         corner = self.SCREEN_CORNER
@@ -742,35 +671,68 @@ class Device:
                 for xx in range(int(cx), int(cx) + corner):
                     if not round_rect_contains(xx + 0.5, yy + 0.5, 0, 0, self.w, self.h, corner):
                         cv.blend(xx, yy, BEZEL_DARK, 1.0)
-        if system_bars:
-            self.draw_system_bars(cv)
         return cv
 
     # -- hardware ------------------------------------------------------
     def draw_body(self) -> None:
+        """MatePad Mini frame: matte aluminium, hairline edge, glossy inner lip."""
         cv = self.cv
         ow, oh = self.outer_w, self.outer_h
-        # drop shadow
-        cv.rect(dp(8), oh - dp(7), ow - dp(16), dp(6), (0, 0, 0), self.CORNER, alpha=0.28)
-        # aluminium body with a soft vertical gradient, clipped to the corners
+
+        # contact shadow, then a soft ambient one
+        cv.rect(dp(10), oh - dp(6), ow - dp(20), dp(5), (0, 0, 0), self.CORNER, alpha=0.34)
+        cv.rect(dp(6), oh - dp(12), ow - dp(12), dp(9), (0, 0, 0), self.CORNER, alpha=0.14)
+
+        # aluminium: a few vertical bands keep it from looking like flat plastic
+        bands = (
+            (0.00, BODY_TOP),
+            (0.35, BODY_MID),
+            (0.72, BODY_MID),
+            (1.00, BODY_BOTTOM),
+        )
         for yy in range(oh):
             t = yy / oh
-            colour = mix(BODY_TOP, BODY_BOTTOM, t)
+            for index in range(1, len(bands)):
+                if t <= bands[index][0]:
+                    lo, hi = bands[index - 1], bands[index]
+                    span = max(1e-6, hi[0] - lo[0])
+                    colour = mix(lo[1], hi[1], (t - lo[0]) / span)
+                    break
+            else:
+                colour = BODY_BOTTOM
             cv.rect(0, yy, ow, 1, colour,
                     mask=lambda px, py, yy=yy: round_rect_contains(px, py, 0, 0, ow, oh, self.CORNER))
-        # thin edge line
+
+        # specular sheen along the top-left edge of the frame
+        for index in range(3):
+            inset = dp(1.6) + index * dp(0.8)
+            cv.rect(inset, inset, ow - 2 * inset, oh - 2 * inset, (255, 255, 255),
+                    self.CORNER - inset, alpha=0.16 - index * 0.045,
+                    mask=lambda px, py, i=inset: round_rect_contains(
+                        px, py, i, i, ow - 2 * i, oh - 2 * i, self.CORNER - i))
+
+        # hairline edge
         frame = dp(1)
         for yy in range(oh):
-            for xx in range(0, ow):
+            for xx in range(ow):
                 if not round_rect_contains(xx + 0.5, yy + 0.5, 0, 0, ow, oh, self.CORNER):
                     continue
                 if not round_rect_contains(xx + 0.5, yy + 0.5, frame, frame,
                                            ow - 2 * frame, oh - 2 * frame,
                                            self.CORNER - frame):
                     cv.blend(xx, yy, BODY_EDGE, 0.9)
-        # black glass ring around the panel
+
+        # black glass, then a dark inner lip that reads as depth
         cv.rect(self.BEZEL - dp(2.7), self.BEZEL - dp(2.7),
                 self.w + dp(5.4), self.h + dp(5.4), BEZEL_DARK, self.SCREEN_CORNER + dp(2.7))
+        lip = dp(1.4)
+        for step in range(int(lip * 2)):
+            alpha = 0.35 - step * 0.12
+            if alpha <= 0:
+                continue
+            cv.rect(self.BEZEL - lip + step * 0.5, self.BEZEL - lip + step * 0.5,
+                    self.w + 2 * lip - step, self.h + 2 * lip - step,
+                    (0, 0, 0), self.SCREEN_CORNER + lip, alpha=alpha)
 
     def draw_hardware(self) -> None:
         """Only what is visible from the front: the punch hole camera.
@@ -787,6 +749,19 @@ class Device:
         cv.disc(cam_x, cam_y, dp(3.9), rgb("0B0F11"))
         cv.disc(cam_x - dp(0.3), cam_y - dp(0.3), dp(2.4), rgb("1B2A33"))
         cv.disc(cam_x - dp(1.1), cam_y - dp(1.1), dp(0.8), rgb("6E8A96"), alpha=0.9)
+
+        # physical keys sit on the thin frame: a few px of metal catch the light.
+        # They are clipped to the frame so nothing spills onto the shadow.
+        for index in range(2):
+            if self.wide:
+                x0, y0 = self.outer_w * (0.40 + index * 0.055), dp(0.8)
+                w, h = dp(15), dp(2.2)
+            else:
+                x0, y0 = dp(0.8), self.outer_h * (0.40 + index * 0.055)
+                w, h = dp(2.2), dp(15)
+            cv.rect(x0, y0, w, h, KEY_EDGE, dp(1.0), alpha=0.8,
+                    mask=lambda px, py: round_rect_contains(
+                        px, py, 0, 0, self.outer_w, self.outer_h, self.CORNER))
 
     def render(self) -> Canvas:
         screen = self.draw_screen()
