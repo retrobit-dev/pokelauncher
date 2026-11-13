@@ -93,7 +93,48 @@ Di sebagian ROM (MIUI, ColorOS, One UI) dialog itu diganti halaman khusus: buka
 *Settings → Apps → Default apps → Home app*. Jika perangkat gagal menampilkan dialog,
 PokeLauncher otomatis membuka halaman info aplikasi sebagai fallback.
 
-## Fitur
+## Dunia game (arah baru)
+
+Home screen bukan lagi kanvas kosong: ia adalah dunia top-down yang bisa dijelajahi,
+dengan launcher aplikasi sebagai **mesin** di dalam dunia itu.
+
+**Arah gameplay** — pertanian ala Harvest Moon + bertahan hidup ala Minecraft, tampilan
+HeartGold:
+
+| Lapisan | Isi |
+| --- | --- |
+| Waktu | Satu hari game = satu hari nyata. Siang 06:00-18:00, malam selebihnya. |
+| Bertani | Bajak tanah, tanam bibit, siram sekali sehari, panen setelah 2 hari. |
+| Membangun | Tebang pohon (kayu), tambang batu, bangun blok, pasang lampu. |
+| Bertahan | Lapar turun seiring waktu; malam di tempat gelap mengurangi nyawa. |
+| Kontrol | Ketuk tujuan — karakter mencari jalur sendiri. Tidak ada joystick. |
+| Launcher | Dekati mesin di depan rumah, ketuk untuk membuka daftar aplikasi. |
+
+Peta awal 80x50 sel (rumah, sawah berpagar, kolam, pohon, mesin) ditulis
+`tools/starter_map.py` ke `app/src/main/assets/tileset/map.json`. Peta yang lebih besar
+bisa dilukis di editor dan disimpan sebagai berkas yang sama.
+
+**Struktur kode**
+
+```
+app/src/main/java/dev/retrobit/pokelauncher/game/   Kotlin murni, tanpa Android
+  GameMap.kt     sel + lapisan + collision
+  MapJson.kt     membaca tileset.json & map.json
+  GameClock.kt   jam dinding -> siang/malam
+  World.kt       jalan, tambang, bangun, tani, lapar, nyawa
+  Pathfinder.kt  ketuk-untuk-jalan
+  Camera.kt      kamera yang menempel di tepi peta
+  Input.kt       ketukan -> sel
+app/src/main/java/dev/retrobit/pokelauncher/ui/
+  WorldCanvas.kt menggambar peta 16px, FilterQuality.None
+  GameScreen.kt  HUD jam, nyawa, lapar, persediaan
+  GameViewModel.kt menyimpan dunia + jam nyata
+```
+
+Semua aturan di `game/` bebas Android, jadi diuji di JVM (`WorldTest`, 39 tes) tanpa
+emulator.
+
+## Fitur launcher
 
 | Fitur | Detail |
 | --- | --- |
@@ -128,14 +169,21 @@ Sandbox pengembangan tidak punya JDK/Android SDK dan akses Maven dibatasi, jadi 
 dijalankan di sini. Sebagai gantinya ada dua skrip pemeriksaan deterministik:
 
 ```bash
-python3 tools/static_check.py   # XML valid, referensi @resource, impor & delimiter Kotlin
-python3 tools/verify.py         # alias version catalog, call-site Compose, kunci strings id/en
-python3 tools/render_tablet.py   # regenerasi render MatePad Mini
-python3 tools/preview_server.py  # halaman pratinjau di http://localhost:8000
+python3 tools/verify.py            # tileset, aset aplikasi, rute server, editor
+python3 tools/static_check.py      # XML, referensi @resource, impor Kotlin
+python3 tools/kotlin_symbols.py    # simbol dipakai tapi tidak diimpor
+python3 tools/kotlin_calls.py      # argumen @Composable yang hilang
+node    tools/editor_test.js       # editor: grid 16px, cat, hapus, isi, batas peta
+node    tools/editor_load_test.js  # peta bawaan termuat utuh di editor
+node    tools/game_rules_test.js   # aturan dunia, versi JS dari WorldTest
+node    tools/validate_starter_map.js
+python3 tools/world_rules_sim.py   # skenario WorldTest tanpa JDK
+python3 tools/render_map.py <map.json> <out.png> [skala]
+python3 tools/preview_server.py    # editor peta di http://localhost:8000
 ```
 
-Keduanya lulus tanpa error pada commit ini. Tetap jalankan `./gradlew assembleDebug` sekali di
-mesin Anda; jika ada error kompilasi, kirimkan log-nya ke sesi ini untuk diperbaiki.
+Semuanya dijalankan CI bersama `./gradlew assembleDebug testDebugUnitTest`. Build terakhir
+lulus 39 unit test dan menerbitkan APK.
 
 ## Pratinjau interaktif (lokal)
 
