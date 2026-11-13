@@ -149,6 +149,11 @@ python3 tools/preview_server.py --port 9000
 Setelah `tools/render_tablet.py` dijalankan, cukup refresh browser. Server hanya menyajikan
 `/docs/preview-tablet.png`; sisa repo tidak bisa diakses.
 
+Punch hole kamera ada di **kiri atas** layar landscape: pada panel portrait hole-nya di sudut
+kanan atas, dan memutar tablet ke landscape (searah jarum jam, tombol volume di atas) membawa
+sudut itu ke kiri atas — sama seperti yang terlihat di foto perangkat sungguhan. `verify.py`
+menjaga posisi dan ukurannya (sekitar 3-5% lebar panel) supaya tidak melenceng lagi.
+
 ## Build APK lewat GitHub Actions
 
 Repo ini menyertakan `.github/workflows/android.yml`: setiap push ke branch mana pun akan

@@ -47,6 +47,19 @@ HILL_FAR = rgb("AFC79A")
 HILL_MID = rgb("8FAF74")
 HILL_NEAR = rgb("7E9C63")
 GRASS = rgb("5F7F4C")
+# Punch hole: 32 MP selfie camera. In portrait the hole sits in the top right
+# corner of the 1600 x 2560 panel; turning the tablet the usual way for
+# landscape (counter clockwise, keys on top) brings that corner to the top
+# LEFT of the screen, which is where hands-on photos of the device show it.
+# Measured off orthographic product photography: the hole is ~5.4% of the
+# 1600 px short side, i.e. ~86 px / ~28 dp across, sitting inside the status
+# bar strip with a rim gap of ~12 dp to the two nearest panel edges.
+CAMERA_INSET_DP = 12.0    # rim gap between the hole edge and the panel edge
+CAMERA_RADIUS_DP = 14.0   # 28 dp diameter, matching the 86 px hole on device
+# WindowInsets.statusBars height: the hole stays inside this strip, exactly as
+# it does on the device where the selfie camera looks over the status bar.
+STATUS_BAR_DP = 26.0
+
 BEZEL_BLACK = rgb("101112")   # flat black surround
 BEZEL_RIM = rgb("2A2C2E")     # hairline where the glass meets the panel
 BEZEL_DARK = rgb("15181A")
@@ -666,7 +679,9 @@ class Device:
         self.scrim(cv)
 
         margin = dp(16)
-        y = dp(10)
+        # LauncherScreen applies statusBarsPadding() around the whole column,
+        # so the first card starts below the status bar strip.
+        y = dp(STATUS_BAR_DP) + dp(10)
         y += self.top_bar(cv, margin, y) + dp(10)
         y += self.player_card(cv, margin, y, self.w - margin * 2) + dp(10)
         self.party_grid(cv, margin, y, self.w - margin * 2, y, self.h - dp(10))
@@ -705,14 +720,24 @@ class Device:
                 self.SCREEN_CORNER + dp(1.6), alpha=0.55)
 
     def draw_hardware(self) -> None:
-        """Only what is visible from the front: the punch hole camera."""
+        """Only what is visible from the front: the punch hole camera.
+
+        The camera sits in the top right corner of the portrait panel. The
+        tablet is normally turned counter clockwise to landscape (volume keys
+        on top), which carries that corner over to the top LEFT of the screen,
+        exactly where hands-on photos of the MatePad Mini show the hole.
+        """
         cv = self.cv
-        # landscape only: the punch hole sits near the left long edge
-        cam_x, cam_y = self.BEZEL + dp(9), self.BEZEL + dp(44)
-        cv.disc(cam_x, cam_y + dp(0.5), dp(4.6), (0, 0, 0), alpha=0.30)
-        cv.disc(cam_x, cam_y, dp(3.9), rgb("0B0F11"))
-        cv.disc(cam_x - dp(0.3), cam_y - dp(0.3), dp(2.4), rgb("1B2A33"))
-        cv.disc(cam_x - dp(1.1), cam_y - dp(1.1), dp(0.8), rgb("6E8A96"), alpha=0.9)
+        radius = dp(CAMERA_RADIUS_DP)
+        cam_x = self.BEZEL + dp(CAMERA_INSET_DP) + radius
+        cam_y = self.BEZEL + dp(CAMERA_INSET_DP) + radius
+
+        # dark rim, then the lens barrel, then the glass reflection
+        ring = radius + dp(0.6)
+        cv.disc(cam_x, cam_y, ring, rgb("070A0C"), alpha=0.9)
+        cv.disc(cam_x, cam_y, radius, rgb("04060A"))
+        cv.disc(cam_x - dp(0.4), cam_y - dp(0.4), radius * 0.66, rgb("141F27"))
+        cv.disc(cam_x - dp(2.2), cam_y - dp(2.2), radius * 0.24, rgb("6F8A96"), alpha=0.9)
 
     def render(self) -> Canvas:
         # body first (opaque bezel, transparent outside the rounded corners),

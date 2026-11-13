@@ -16,3 +16,6 @@
 # python bytecode from the preview tooling
 __pycache__/
 *.pyc
+
+# reference photos pulled in for measurement (not part of the app)
+/image-search

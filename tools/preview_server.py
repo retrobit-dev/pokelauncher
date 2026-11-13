@@ -33,26 +33,13 @@ PAGE = """<!DOCTYPE html>
     min-height: 100vh;
     display: grid; place-items: center;
     padding: clamp(8px, 2.5vw, 28px);
-    /* the previous paper backdrop, so the black bezel has clear edges */
-    background:
-      radial-gradient(1000px 520px at 78% -8%, rgba(159, 212, 210, .55), transparent 62%),
-      linear-gradient(180deg, #f4e7be 0%, #fbf3dc 46%, #fbf3dc 100%);
-    background-attachment: fixed;
+    background: #ffffff;
   }
   img {
     display: block;
     max-width: 100%;
     max-height: calc(100vh - 2 * clamp(8px, 2.5vw, 28px));
     width: auto; height: auto;
-    filter: drop-shadow(0 16px 36px rgba(59, 47, 30, .28));
-  }
-  @media (prefers-color-scheme: dark) {
-    body {
-      background:
-        radial-gradient(1000px 520px at 78% -8%, rgba(60, 96, 96, .45), transparent 62%),
-        linear-gradient(180deg, #1b1c1e 0%, #141517 100%);
-    }
-    img { filter: drop-shadow(0 16px 36px rgba(0, 0, 0, .55)); }
   }
 </style>
 </head>

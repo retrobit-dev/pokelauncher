@@ -375,6 +375,108 @@ def check_preview_assets() -> None:
         if 'SHOT = "preview-tablet.png"' not in text:
             fail("preview_server.py must serve only the landscape MatePad Mini render")
 
+    check_punch_hole(os.path.join(docs, "preview-tablet.png"))
+
+
+def check_punch_hole(path: str) -> None:
+    """The selfie camera must sit in the TOP LEFT of the landscape screen.
+
+    The device has its punch hole in the top right corner of the portrait
+    panel; turning it counter clockwise for landscape carries that corner over
+    to the top left, which is what hands-on photos show. A render with the hole
+    in the other corner, or with a hole that is a token dot / a huge circle,
+    means the geometry regressed.
+    """
+    if not os.path.exists(path):
+        return
+    import zlib
+
+    with open(path, "rb") as handle:
+        blob = handle.read()
+    pos, idat, width, height, colour_type = 8, b"", 0, 0, None
+    while pos + 8 <= len(blob):
+        import struct
+        length = struct.unpack(">I", blob[pos:pos + 4])[0]
+        tag = blob[pos + 4:pos + 8]
+        body = blob[pos + 8:pos + 8 + length]
+        if tag == b"IHDR":
+            width, height = struct.unpack(">II", body[:8])
+            colour_type = body[9]
+        elif tag == b"IDAT":
+            idat += body
+        pos += 12 + length
+    if colour_type != 6 or not width or not height:
+        return
+
+    bpp, stride = 4, width * 4
+    raw = zlib.decompress(idat)
+    rows, prev, offset = [], bytearray(stride), 0
+    for _ in range(height):
+        filt = raw[offset]
+        offset += 1
+        line = bytearray(raw[offset:offset + stride])
+        offset += stride
+        if filt == 1:
+            for i in range(bpp, stride):
+                line[i] = (line[i] + line[i - bpp]) & 255
+        elif filt == 2:
+            for i in range(stride):
+                line[i] = (line[i] + prev[i]) & 255
+        elif filt == 3:
+            for i in range(stride):
+                left = line[i - bpp] if i >= bpp else 0
+                line[i] = (line[i] + ((left + prev[i]) >> 1)) & 255
+        elif filt == 4:
+            for i in range(stride):
+                a = line[i - bpp] if i >= bpp else 0
+                b = prev[i]
+                c = prev[i - bpp] if i >= bpp else 0
+                p = a + b - c
+                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+                pred = a if (pa <= pb and pa <= pc) else (b if pb <= pc else c)
+                line[i] = (line[i] + pred) & 255
+        rows.append(line)
+        prev = line
+
+    def dark(x: int, y: int) -> bool:
+        i = x * 4
+        line = rows[y]
+        return (line[i] + line[i + 1] + line[i + 2]) / 3 < 45
+
+    # The black bezel is the outermost ring; the lit panel starts inside it.
+    bezel = max(8, height // 40)
+    inner_w, inner_h = width - 2 * bezel, height - 2 * bezel
+
+    # A punch hole is a dark disc that is much darker than the UI around it.
+    # Restrict the search to the top strip inside the panel, split into halves.
+    strip = bezel + max(40, inner_h // 8)
+    counts = {"left": 0, "right": 0}
+    for y in range(bezel, strip):
+        for x in range(bezel, width - bezel):
+            if dark(x, y):
+                counts["left" if x < width // 2 else "right"] += 1
+    if counts["left"] < 2000 or counts["right"] > counts["left"] * 0.6:
+        fail(f"punch hole should sit in the top LEFT of the landscape screen, "
+             f"dark pixels in top strip: left={counts['left']} right={counts['right']}")
+
+    # Size sanity: the hole spans a few percent of the screen width, not a dot
+    # and not a fist sized circle. Measure the dark blob in the top left corner
+    # window only, so the UI icons below and the bezel never enter the box.
+    window_w, window_h = max(60, inner_w // 10), max(60, inner_h // 8)
+    xs, ys = [], []
+    for y in range(bezel, bezel + window_h):
+        for x in range(bezel, bezel + window_w):
+            if dark(x, y):
+                xs.append(x)
+                ys.append(y)
+    if not xs:
+        fail("punch hole not found in the top left corner of the screen")
+    else:
+        diameter = max(max(xs) - min(xs), max(ys) - min(ys)) + 1
+        if not (0.02 * inner_w <= diameter <= 0.08 * inner_w):
+            fail(f"punch hole diameter {diameter}px on a {inner_w}px wide panel "
+                 "is off; expect about 3-5% of the panel width")
+
 
 
 
