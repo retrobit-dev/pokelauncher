@@ -165,3 +165,33 @@ fun PlusIcon(
         )
     }
 }
+
+/**
+ * A 3x3 grid of squares: the design-grid toggle.
+ *
+ * Drawn rather than typed because the pixel fonts have no such glyph, and
+ * because four lines are cheaper than shipping an icon into the APK.
+ */
+@Composable
+fun GridIcon(
+    modifier: Modifier = Modifier,
+    size: Dp = 20.dp,
+    tint: Color = HgColors.InkSoft,
+) {
+    Canvas(modifier = modifier.size(size)) {
+        val cells = 3
+        val gap = this.size.width * 0.12f
+        val cell = (this.size.width - gap * (cells - 1)) / cells
+        val thin = 1.2.dp.toPx()
+        for (row in 0 until cells) {
+            for (col in 0 until cells) {
+                drawRect(
+                    color = tint,
+                    topLeft = Offset(col * (cell + gap), row * (cell + gap)),
+                    size = Size(cell, cell),
+                    style = Stroke(width = thin),
+                )
+            }
+        }
+    }
+}

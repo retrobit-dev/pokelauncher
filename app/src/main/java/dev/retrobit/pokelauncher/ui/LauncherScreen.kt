@@ -36,9 +36,13 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import dev.retrobit.pokelauncher.data.AppEntry
 import dev.retrobit.pokelauncher.ui.components.CloseIcon
+import dev.retrobit.pokelauncher.ui.components.GridIcon
 import dev.retrobit.pokelauncher.ui.components.HgIconButton
 import dev.retrobit.pokelauncher.ui.components.rememberAppIcon
 import dev.retrobit.pokelauncher.ui.screens.AppDrawerScreen
@@ -295,11 +299,35 @@ private fun HomeSurface(
         // Nothing on the screen: no clock, no HUD, no field. The paper fill is
         // the same colour as the tablet preview, so what you design next lands
         // on the canvas you are looking at.
+        //
+        // The design grid is the one exception: it is a measuring tool, off by
+        // default, and it exists so the next element can be placed in cells
+        // instead of by eye.
+        var showGrid by rememberSaveable { mutableStateOf(false) }
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(HgColors.Paper),
-        )
+        ) {
+            if (showGrid) DesignGrid()
+            // The switch sits in the camera's danger box: it is the only spot
+            // that is guaranteed dead space on this panel, and it stays clear
+            // of everything the grid is meant to help place.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (showGrid) HgColors.Ink else HgColors.PaperShade)
+                    .clickable { showGrid = !showGrid },
+                contentAlignment = Alignment.Center,
+            ) {
+                GridIcon(
+                    tint = if (showGrid) HgColors.Paper else HgColors.InkSoft,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
         return
     }
 
