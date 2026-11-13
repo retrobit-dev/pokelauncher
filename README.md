@@ -4,14 +4,11 @@ Launcher Android native bergaya **Pokémon HeartGold / SoulSilver**: home screen
 enam slot "party", app drawer, jam HeartGold, dan setelan tampilan. Seluruh ilustrasi
 (langit Johto, bukit, Poké Ball, kartrid GBA) digambar dari kode Compose — tanpa aset berhak cipta.
 
-| MatePad Mini landscape | MatePad Mini portrait |
-| --- | --- |
-| ![Pratinjau MatePad Mini landscape](docs/preview-tablet.png) | ![Pratinjau MatePad Mini portrait](docs/preview-tablet-portrait.png) |
+![PokeLauncher di MatePad Mini](docs/preview-tablet.png)
 
-> Dua render di atas menempatkan layar launcher di dalam bezel **Huawei MatePad Mini**
-> (8.8", 2560 × 1600, 343 ppi, bezel ~4.4 mm, punch-hole kamera di dalam layar), dibuat oleh
-> `tools/render_tablet.py` memakai palet asli `ui/theme/Theme.kt` dan tata letak
-> `LauncherScreen.kt`. Ini pratinjau desain, bukan render emulator.
+> Layar launcher di dalam bezel **Huawei MatePad Mini** (8.8", 2560 × 1600, 343 ppi, bezel
+> ~4.4 mm), landscape. Dibuat oleh `tools/render_tablet.py` dari palet asli
+> `ui/theme/Theme.kt` dan tata letak `LauncherScreen.kt` — pratinjau desain, bukan render emulator.
 
 ### Perilaku di layar besar
 
@@ -44,8 +41,8 @@ Panduan manual jika dialog sistem tidak muncul: **Setelan → Aplikasi → Aplik
 Aplikasi layar utama → PokeLauncher**, atau **Setelan → Aplikasi → PokeLauncher → Buka secara
 default → Layar utama**, lalu tekan tombol Home.
 
-MatePad Mini: **landscape 853 dp → layout lebar**, **portrait 533 dp → layout ponsel** (bukan
-tablet), karena ambangnya 700 dp. Keduanya sudah diuji secara visual lewat renderer di atas.
+MatePad Mini dipakai **landscape**: 853 dp, jadi selalu masuk layout lebar. Di portrait (533 dp)
+launcher akan memakai layout ponsel, tetapi pratinjau di repo hanya menyajikan landscape.
 
 ---
 
@@ -66,7 +63,7 @@ app/src/main/java/dev/retrobit/pokelauncher/
 │   └── theme/                   Palet HeartGold + 3 font pixel
 └── res/                         strings (id + en), tema, ikon adaptive
 tools/                           Skrip verifikasi, render & server pratinjau
-docs/                            Render MatePad Mini (landscape + portrait)
+docs/                            Render MatePad Mini (landscape)
 licenses/                        Lisensi OFL untuk font
 ```
 
@@ -132,7 +129,7 @@ dijalankan di sini. Sebagai gantinya ada dua skrip pemeriksaan deterministik:
 ```bash
 python3 tools/static_check.py   # XML valid, referensi @resource, impor & delimiter Kotlin
 python3 tools/verify.py         # alias version catalog, call-site Compose, kunci strings id/en
-python3 tools/render_tablet.py   # regenerasi kedua render MatePad Mini
+python3 tools/render_tablet.py   # regenerasi render MatePad Mini
 python3 tools/preview_server.py  # halaman pratinjau di http://localhost:8000
 ```
 
@@ -141,8 +138,7 @@ mesin Anda; jika ada error kompilasi, kirimkan log-nya ke sesi ini untuk diperba
 
 ## Pratinjau interaktif (lokal)
 
-Halaman pratinjau hanya menampilkan **dua render MatePad Mini** (landscape dan portrait), dibuat
-langsung oleh server dari `docs/`:
+Halaman pratinjau hanya menampilkan **satu render MatePad Mini landscape**, tanpa keterangan:
 
 ```bash
 python3 tools/preview_server.py           # http://localhost:8000
@@ -150,7 +146,7 @@ python3 tools/preview_server.py --port 9000
 ```
 
 Setelah `tools/render_tablet.py` dijalankan, cukup refresh browser. Server hanya menyajikan
-`/docs/preview-tablet*.png`; sisa repo tidak bisa diakses.
+`/docs/preview-tablet.png`; sisa repo tidak bisa diakses.
 
 ## Build APK lewat GitHub Actions
 

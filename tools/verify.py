@@ -344,7 +344,7 @@ def check_home_role_flow() -> None:
 def check_preview_assets() -> None:
     """The preview must stay a MatePad Mini mockup: two renders and one server."""
     docs = os.path.join(ROOT, "docs")
-    expected = {"preview-tablet.png", "preview-tablet-portrait.png"}
+    expected = {"preview-tablet.png"}
     present = {n for n in os.listdir(docs) if n.endswith(".png")}
     if present != expected:
         fail(f"docs/ should hold only {sorted(expected)}, found {sorted(present)}")
@@ -360,16 +360,16 @@ def check_preview_assets() -> None:
             fail(f"docs/{name} is not a PNG")
             continue
         width, height = struct.unpack(">II", header[16:24])
-        if (width, height) not in {(2628, 1668), (1668, 2628)}:
-            fail(f"docs/{name} is {width}x{height}, expected the MatePad Mini frame")
+        if (width, height) != (2628, 1668):
+            fail(f"docs/{name} is {width}x{height}, expected the landscape MatePad Mini frame")
 
     server = os.path.join(ROOT, "tools/preview_server.py")
     if not os.path.exists(server):
         fail("tools/preview_server.py missing")
     else:
         text = open(server, encoding="utf-8").read()
-        if "SHOTS = (\"preview-tablet.png\", \"preview-tablet-portrait.png\")" not in text:
-            fail("preview_server.py must serve only the two MatePad Mini renders")
+        if 'SHOT = "preview-tablet.png"' not in text:
+            fail("preview_server.py must serve only the landscape MatePad Mini render")
 
 
 

@@ -1,23 +1,20 @@
 #!/usr/bin/env python3
-"""Renders the launcher inside a Huawei MatePad Mini bezel, both orientations.
+"""Renders the launcher inside a Huawei MatePad Mini bezel, landscape only.
 
 Device reference (Huawei MatePad Mini, 2025):
   8.8" flexible OLED, 2560 x 1600 px (16:10), 343 ppi, ~92% screen to body,
   body 198.6 x 127.3 x 5.2 mm -> ~4.4 mm bezel all round, 32 MP punch hole
-  camera inside the display (top corner in portrait).
+  camera inside the display.
 
-The UI follows the real Compose code path:
+The UI follows the real Compose code path for a wide device (>= 700 dp):
+  JohtoWallpaper + scrim, TopBar, PlayerCard wide branch (action on the right),
+  PartyGrid with GridCells.Fixed(6) centred vertically, wide StatusCard.
 
-  landscape (853 dp wide -> wide layout)
-      JohtoWallpaper + scrim, TopBar, PlayerCard wide branch (button right),
-      PartyGrid with GridCells.Fixed(6) centred vertically, wide StatusCard
-  portrait (533 dp wide -> phone layout)
-      TopBar, PlayerCard stacked (full width button), PartyGrid with the
-      default 3 columns, StatusCard with the hint under the title
+The frame is a flat black bezel: no aluminium, no keys, no shadow, no labels.
 
 Everything is pure Python (no Pillow) so the script runs anywhere.
 
-Output: docs/preview-tablet.png and docs/preview-tablet-portrait.png
+Output: docs/preview-tablet.png
 """
 from __future__ import annotations
 
@@ -50,11 +47,8 @@ HILL_FAR = rgb("AFC79A")
 HILL_MID = rgb("8FAF74")
 HILL_NEAR = rgb("7E9C63")
 GRASS = rgb("5F7F4C")
-BODY_TOP = rgb("EDEFE9")
-BODY_MID = rgb("DCE0D9")
-BODY_BOTTOM = rgb("C2C8C0")
-KEY_EDGE = rgb("ADB4AC")
-BODY_EDGE = rgb("979F97")
+BEZEL_BLACK = rgb("101112")   # flat black surround
+BEZEL_RIM = rgb("2A2C2E")     # hairline where the glass meets the panel
 BEZEL_DARK = rgb("15181A")
 
 CARTRIDGES = [
@@ -452,7 +446,7 @@ def gear(cv: Canvas, cx: float, cy: float, r: float) -> None:
 
 # ------------------------------------------------------------------- device
 class Device:
-    """One MatePad Mini, drawn in the requested orientation."""
+    """One MatePad Mini in landscape, screen inside a black bezel."""
 
     BEZEL = 34
     CORNER = 62
@@ -463,7 +457,7 @@ class Device:
         self.wide = w >= dp(700)         # same rule as LauncherScreen.kt
         self.outer_w = w + 2 * self.BEZEL
         self.outer_h = h + 2 * self.BEZEL
-        self.cv = Canvas(self.outer_w, self.outer_h, BODY_BOTTOM)
+        self.cv = Canvas(self.outer_w, self.outer_h, BEZEL_BLACK)
 
     # -- screen content ------------------------------------------------
     def wallpaper(self, cv: Canvas) -> None:
@@ -675,93 +669,36 @@ class Device:
 
     # -- hardware ------------------------------------------------------
     def draw_body(self) -> None:
-        """MatePad Mini frame: matte aluminium, hairline edge, glossy inner lip."""
+        """Uniform black bezel around the panel, nothing else.
+
+        No aluminium back, no keys, no drop shadow: the preview is the screen
+        inside the frame, so the frame stays a flat black surround with the
+        same rounded corners as the tablet.
+        """
         cv = self.cv
         ow, oh = self.outer_w, self.outer_h
 
-        # contact shadow, then a soft ambient one
-        cv.rect(dp(10), oh - dp(6), ow - dp(20), dp(5), (0, 0, 0), self.CORNER, alpha=0.34)
-        cv.rect(dp(6), oh - dp(12), ow - dp(12), dp(9), (0, 0, 0), self.CORNER, alpha=0.14)
-
-        # aluminium: a few vertical bands keep it from looking like flat plastic
-        bands = (
-            (0.00, BODY_TOP),
-            (0.35, BODY_MID),
-            (0.72, BODY_MID),
-            (1.00, BODY_BOTTOM),
-        )
+        # the frame is a single flat colour, clipped to the body corner radius
         for yy in range(oh):
-            t = yy / oh
-            for index in range(1, len(bands)):
-                if t <= bands[index][0]:
-                    lo, hi = bands[index - 1], bands[index]
-                    span = max(1e-6, hi[0] - lo[0])
-                    colour = mix(lo[1], hi[1], (t - lo[0]) / span)
-                    break
-            else:
-                colour = BODY_BOTTOM
-            cv.rect(0, yy, ow, 1, colour,
-                    mask=lambda px, py, yy=yy: round_rect_contains(px, py, 0, 0, ow, oh, self.CORNER))
+            cv.rect(0, yy, ow, 1, BEZEL_BLACK,
+                    mask=lambda px, py, yy=yy: round_rect_contains(
+                        px, py, 0, 0, ow, oh, self.CORNER))
 
-        # specular sheen along the top-left edge of the frame
-        for index in range(3):
-            inset = dp(1.6) + index * dp(0.8)
-            cv.rect(inset, inset, ow - 2 * inset, oh - 2 * inset, (255, 255, 255),
-                    self.CORNER - inset, alpha=0.16 - index * 0.045,
-                    mask=lambda px, py, i=inset: round_rect_contains(
-                        px, py, i, i, ow - 2 * i, oh - 2 * i, self.CORNER - i))
-
-        # hairline edge
-        frame = dp(1)
-        for yy in range(oh):
-            for xx in range(ow):
-                if not round_rect_contains(xx + 0.5, yy + 0.5, 0, 0, ow, oh, self.CORNER):
-                    continue
-                if not round_rect_contains(xx + 0.5, yy + 0.5, frame, frame,
-                                           ow - 2 * frame, oh - 2 * frame,
-                                           self.CORNER - frame):
-                    cv.blend(xx, yy, BODY_EDGE, 0.9)
-
-        # black glass, then a dark inner lip that reads as depth
-        cv.rect(self.BEZEL - dp(2.7), self.BEZEL - dp(2.7),
-                self.w + dp(5.4), self.h + dp(5.4), BEZEL_DARK, self.SCREEN_CORNER + dp(2.7))
-        lip = dp(1.4)
-        for step in range(int(lip * 2)):
-            alpha = 0.35 - step * 0.12
-            if alpha <= 0:
-                continue
-            cv.rect(self.BEZEL - lip + step * 0.5, self.BEZEL - lip + step * 0.5,
-                    self.w + 2 * lip - step, self.h + 2 * lip - step,
-                    (0, 0, 0), self.SCREEN_CORNER + lip, alpha=alpha)
+        # black glass around the lit panel, with a hairline so the edge of the
+        # screen reads as an edge instead of a colour change
+        cv.rect(self.BEZEL - dp(1.6), self.BEZEL - dp(1.6),
+                self.w + dp(3.2), self.h + dp(3.2), BEZEL_RIM,
+                self.SCREEN_CORNER + dp(1.6), alpha=0.55)
 
     def draw_hardware(self) -> None:
-        """Only what is visible from the front: the punch hole camera.
-
-        Side keys and speakers sit on the 5.2 mm back edge and are invisible
-        head on, so drawing them would just add noise.
-        """
+        """Only what is visible from the front: the punch hole camera."""
         cv = self.cv
-        if self.wide:
-            cam_x, cam_y = self.BEZEL + dp(9), self.BEZEL + dp(44)
-        else:
-            cam_x, cam_y = self.BEZEL + dp(44), self.BEZEL + dp(9)
+        # landscape only: the punch hole sits near the left long edge
+        cam_x, cam_y = self.BEZEL + dp(9), self.BEZEL + dp(44)
         cv.disc(cam_x, cam_y + dp(0.5), dp(4.6), (0, 0, 0), alpha=0.30)
         cv.disc(cam_x, cam_y, dp(3.9), rgb("0B0F11"))
         cv.disc(cam_x - dp(0.3), cam_y - dp(0.3), dp(2.4), rgb("1B2A33"))
         cv.disc(cam_x - dp(1.1), cam_y - dp(1.1), dp(0.8), rgb("6E8A96"), alpha=0.9)
-
-        # physical keys sit on the thin frame: a few px of metal catch the light.
-        # They are clipped to the frame so nothing spills onto the shadow.
-        for index in range(2):
-            if self.wide:
-                x0, y0 = self.outer_w * (0.40 + index * 0.055), dp(0.8)
-                w, h = dp(15), dp(2.2)
-            else:
-                x0, y0 = dp(0.8), self.outer_h * (0.40 + index * 0.055)
-                w, h = dp(2.2), dp(15)
-            cv.rect(x0, y0, w, h, KEY_EDGE, dp(1.0), alpha=0.8,
-                    mask=lambda px, py: round_rect_contains(
-                        px, py, 0, 0, self.outer_w, self.outer_h, self.CORNER))
 
     def render(self) -> Canvas:
         screen = self.draw_screen()
@@ -775,25 +712,13 @@ class Device:
 
 
 def main(argv: list[str] | None = None) -> None:
-    import argparse
-
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--orientation", choices=("landscape", "portrait"), default=None,
-                       help="render a single orientation (default: both)")
-    args = parser.parse_args(argv)
+    """Renders the single landscape preview. No arguments, one output."""
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    if args.orientation in (None, "landscape"):
-        # 2560 x 1600 -> 853 dp wide, the wide layout.
-        landscape = Device(2560, 1600)
-        png = landscape.render().to_png(os.path.join(root, "docs", "preview-tablet.png"))
-        print(f"docs/preview-tablet.png ({png // 1024} KB, {landscape.outer_w}x{landscape.outer_h})")
-
-    if args.orientation in (None, "portrait"):
-        # 1600 x 2560 -> 533 dp wide, the phone layout.
-        portrait = Device(1600, 2560)
-        png = portrait.render().to_png(os.path.join(root, "docs", "preview-tablet-portrait.png"))
-        print(f"docs/preview-tablet-portrait.png ({png // 1024} KB, {portrait.outer_w}x{portrait.outer_h})")
+    # 2560 x 1600 -> 853 dp wide, the wide layout.
+    device = Device(2560, 1600)
+    png = device.render().to_png(os.path.join(root, "docs", "preview-tablet.png"))
+    print(f"docs/preview-tablet.png ({png // 1024} KB, {device.outer_w}x{device.outer_h})")
 
 
 if __name__ == "__main__":
