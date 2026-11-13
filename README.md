@@ -7,7 +7,8 @@ enam slot "party", app drawer, jam HeartGold, dan setelan tampilan. Seluruh ilus
 ![PokeLauncher di MatePad Mini](docs/preview-tablet.png)
 
 > Layar **kosong** di dalam bezel hitam **Huawei MatePad Mini** (8.8", 2560 × 1600, 343 ppi,
-> bezel ~4.4 mm), landscape, di atas latar biru cerah. Kanvasnya sengaja dikosongkan: UI sedang
+> bezel ~4.4 mm), landscape, di atas latar biru cerah. Gambarnya 2772 × 1812: layar 2560 × 1600,
+> ditambah bezel 34 px dan margin biru 72 px di setiap sisi. Kanvasnya sengaja dikosongkan: UI sedang
 > dibangun ulang tahap demi tahap. Pratinjau desain dari `tools/render_tablet.py`, bukan
 > tangkapan emulator.
 
