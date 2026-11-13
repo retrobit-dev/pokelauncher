@@ -69,28 +69,42 @@ def dp(value: float) -> float:
 
 # ------------------------------------------------------------ tiny canvas
 class Canvas:
-    """RGB canvas with flat byte storage and small AA helpers."""
+    """RGBA canvas with flat storage and small anti aliasing helpers.
 
-    def __init__(self, w: int, h: int, fill: tuple[int, int, int]) -> None:
+    The alpha channel matters for the published shot: the body corners are
+    transparent, so the rounded black bezel is visible against any page
+    background instead of merging into a black rectangle.
+    """
+
+    def __init__(self, w: int, h: int, fill: tuple[int, int, int],
+                 alpha: int = 0) -> None:
         self.w, self.h = w, h
-        self.buf = bytearray(bytes(fill) * (w * h))
+        self.buf = bytearray(bytes((*fill, alpha)) * (w * h))
 
     def blend(self, x: int, y: int, colour: tuple[int, int, int], alpha: float) -> None:
+        """Source-over blend. Painting also makes the pixel opaque, so the
+        frame covers the transparent background exactly where it is drawn."""
         if alpha <= 0.0:
             return
         if alpha > 1.0:
             alpha = 1.0
-        i = (y * self.w + x) * 3
+        i = (y * self.w + x) * 4
         buf = self.buf
+        dest_alpha = buf[i + 3] / 255.0
+        out_alpha = alpha + dest_alpha * (1.0 - alpha)
+        if out_alpha <= 0.0:
+            return
         if alpha >= 0.999:
             buf[i] = colour[0]
             buf[i + 1] = colour[1]
             buf[i + 2] = colour[2]
+            buf[i + 3] = 255
             return
         inv = 1.0 - alpha
-        buf[i] = int(colour[0] * alpha + buf[i] * inv)
-        buf[i + 1] = int(colour[1] * alpha + buf[i + 1] * inv)
-        buf[i + 2] = int(colour[2] * alpha + buf[i + 2] * inv)
+        for channel in range(3):
+            buf[i + channel] = int(
+                (colour[channel] * alpha + buf[i + channel] * dest_alpha * inv) / out_alpha)
+        buf[i + 3] = int(out_alpha * 255)
 
     def rect(self, x: float, y: float, w: float, h: float,
              colour: tuple[int, int, int], radius: float = 0.0,
@@ -124,8 +138,8 @@ class Canvas:
                     self.blend(xx, yy, colour, alpha)
             return
         for yy in range(y0, y1):
-            row = (yy * self.w + x0) * 3
-            self.buf[row:row + (x1 - x0) * 3] = bytes(colour) * (x1 - x0)
+            row = (yy * self.w + x0) * 4
+            self.buf[row:row + (x1 - x0) * 4] = bytes((*colour, 255)) * (x1 - x0)
 
     def disc(self, cx: float, cy: float, r: float, colour: tuple[int, int, int],
              alpha: float = 1.0) -> None:
@@ -144,8 +158,8 @@ class Canvas:
             if x_to <= x_from:
                 continue
             if alpha >= 0.999:
-                row = (yy * self.w + x_from) * 3
-                self.buf[row:row + (x_to - x_from) * 3] = bytes(colour) * (x_to - x_from)
+                row = (yy * self.w + x_from) * 4
+                self.buf[row:row + (x_to - x_from) * 4] = bytes((*colour, 255)) * (x_to - x_from)
             else:
                 for xx in range(x_from, x_to):
                     self.blend(xx, yy, colour, alpha)
@@ -155,12 +169,12 @@ class Canvas:
         for yy in range(max(0, int(y0)), min(self.h, int(y1))):
             t = (yy - y0) / max(1.0, y1 - y0)
             colour = tuple(int(top[i] + (bottom[i] - top[i]) * t) for i in range(3))
-            row = yy * self.w * 3
-            self.buf[row:row + self.w * 3] = bytes(colour) * self.w
+            row = yy * self.w * 4
+            self.buf[row:row + self.w * 4] = bytes((*colour, 255)) * self.w
 
     def to_png(self, path: str) -> int:
         raw = bytearray()
-        stride = self.w * 3
+        stride = self.w * 4
         for yy in range(self.h):
             raw.append(0)
             raw.extend(self.buf[yy * stride:(yy + 1) * stride])
@@ -171,7 +185,7 @@ class Canvas:
 
         png = (
             b"\x89PNG\r\n\x1a\n"
-            + chunk(b"IHDR", struct.pack(">IIBBBBB", self.w, self.h, 8, 2, 0, 0, 0))
+            + chunk(b"IHDR", struct.pack(">IIBBBBB", self.w, self.h, 8, 6, 0, 0, 0))
             + chunk(b"IDAT", zlib.compress(bytes(raw), 9))
             + chunk(b"IEND", b"")
         )
@@ -457,7 +471,7 @@ class Device:
         self.wide = w >= dp(700)         # same rule as LauncherScreen.kt
         self.outer_w = w + 2 * self.BEZEL
         self.outer_h = h + 2 * self.BEZEL
-        self.cv = Canvas(self.outer_w, self.outer_h, BEZEL_BLACK)
+        self.cv = Canvas(self.outer_w, self.outer_h, BEZEL_BLACK, alpha=0)
 
     # -- screen content ------------------------------------------------
     def wallpaper(self, cv: Canvas) -> None:
@@ -701,12 +715,14 @@ class Device:
         cv.disc(cam_x - dp(1.1), cam_y - dp(1.1), dp(0.8), rgb("6E8A96"), alpha=0.9)
 
     def render(self) -> Canvas:
-        screen = self.draw_screen()
+        # body first (opaque bezel, transparent outside the rounded corners),
+        # then the screen is copied in, then the camera sits on top of the UI
         self.draw_body()
+        screen = self.draw_screen()
         for yy in range(self.h):
-            src = yy * self.w * 3
-            dst = ((yy + self.BEZEL) * self.outer_w + self.BEZEL) * 3
-            self.cv.buf[dst:dst + self.w * 3] = screen.buf[src:src + self.w * 3]
+            src = yy * self.w * 4
+            dst = ((yy + self.BEZEL) * self.outer_w + self.BEZEL) * 4
+            self.cv.buf[dst:dst + self.w * 4] = screen.buf[src:src + self.w * 4]
         self.draw_hardware()
         return self.cv
 

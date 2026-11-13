@@ -355,11 +355,15 @@ def check_preview_assets() -> None:
             continue
         import struct
         with open(path, "rb") as handle:
-            header = handle.read(24)
+            header = handle.read(33)
         if header[:8] != b"\x89PNG\r\n\x1a\n":
             fail(f"docs/{name} is not a PNG")
             continue
         width, height = struct.unpack(">II", header[16:24])
+        colour_type = header[25]  # 8 sig + 4 len + 4 tag + 4 w + 4 h + 1 depth
+        if colour_type != 6:
+            fail(f"docs/{name} must be RGBA (colour type 6), got {colour_type}; "
+                 "the rounded bezel needs a transparent corner")
         if (width, height) != (2628, 1668):
             fail(f"docs/{name} is {width}x{height}, expected the landscape MatePad Mini frame")
 

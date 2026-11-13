@@ -28,20 +28,32 @@ PAGE = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PokeLauncher</title>
 <style>
-  html, body { margin: 0; height: 100%; }
+  html, body { margin: 0; min-height: 100%; }
   body {
+    min-height: 100vh;
     display: grid; place-items: center;
-    background: #efeee9;
     padding: clamp(8px, 2.5vw, 28px);
+    /* the previous paper backdrop, so the black bezel has clear edges */
+    background:
+      radial-gradient(1000px 520px at 78% -8%, rgba(159, 212, 210, .55), transparent 62%),
+      linear-gradient(180deg, #f4e7be 0%, #fbf3dc 46%, #fbf3dc 100%);
+    background-attachment: fixed;
   }
   img {
     display: block;
     max-width: 100%;
     max-height: calc(100vh - 2 * clamp(8px, 2.5vw, 28px));
     width: auto; height: auto;
-    border-radius: 18px;
+    filter: drop-shadow(0 16px 36px rgba(59, 47, 30, .28));
   }
-  @media (prefers-color-scheme: dark) { body { background: #141517; } }
+  @media (prefers-color-scheme: dark) {
+    body {
+      background:
+        radial-gradient(1000px 520px at 78% -8%, rgba(60, 96, 96, .45), transparent 62%),
+        linear-gradient(180deg, #1b1c1e 0%, #141517 100%);
+    }
+    img { filter: drop-shadow(0 16px 36px rgba(0, 0, 0, .55)); }
+  }
 </style>
 </head>
 <body>
