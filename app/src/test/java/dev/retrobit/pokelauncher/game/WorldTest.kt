@@ -32,27 +32,34 @@ class WorldTest {
         }}
     """.trimIndent()
 
-    private fun mapJson(vararg extra: Pair<String, String>): String {
+    /**
+     * A 10x8 lawn with:
+     *  - water down x=5 for rows 0..5, so rows 6..7 are the way around it,
+     *  - a tree standing at 2,2 on grass, reachable from 2,3,
+     *  - plain grass everywhere else.
+     *
+     * Built layer by layer into one object per cell, which is the format the
+     * editor saves and MapJson reads.
+     */
+    private fun mapJson(): String {
         val cells = JSONObject()
-        // a 10x8 lawn with a pond on x=5 (rows 0..5, so rows 6-7 walk around it)
-        // and a tree standing at 2,2 *on* the grass
         for (y in 0 until 8) {
             for (x in 0 until 10) {
                 val wet = x == 5 && y <= 5
                 cells.put("$x,$y", JSONObject().put("ground", if (wet) "water" else "grass"))
             }
         }
+        // the tree sits on top of the grass, it does not replace it
         cells.getJSONObject("2,2").put("object", "tree")
-        for ((k, v) in extra) cells.put(k, JSONObject(v))
         return JSONObject()
             .put("cols", 10).put("rows", 8)
             .put("cells", cells)
             .toString()
     }
 
-    private fun world(vararg extra: Pair<String, String>): World {
+    private fun world(): World {
         val tiles = MapJson.parseTileSet(tilesJson)
-        val map = MapJson.parseMap(mapJson(*extra), tiles)
+        val map = MapJson.parseMap(mapJson(), tiles)
         return World(map, tiles, startX = 2, startY = 3)
     }
 
@@ -170,20 +177,34 @@ class WorldTest {
 
     @Test
     fun `mining a tree yields wood and clears the cell`() {
-        val world = world()
-        world.step(Direction.RIGHT) // 3,3
-        val before = world.wood
+        // Start away from the tree so reach is actually exercised: the spawn is
+        // 2,3 and the tree 2,2, so from there the tree is already adjacent.
+        val world = World(MapJson.parseMap(mapJson(), MapJson.parseTileSet(tilesJson)),
+            MapJson.parseTileSet(tilesJson), startX = 8, startY = 7)
+
         // 2,3 is plain grass: there is nothing to mine there
         assertTrue(world.mine(2, 3) is World.MineResult.Nothing)
 
-        val tree = world.mine(2, 2) // diagonal: out of reach from 3,3
-        assertTrue(tree is World.MineResult.TooFar)
+        val far = world.mine(2, 2)
+        assertTrue("a tree six cells away is out of reach", far is World.MineResult.TooFar)
 
-        world.step(Direction.LEFT) // 2,3: adjacent to the tree, nothing between
-        val mined = world.mine(2, 2)
-        assertTrue(mined is World.MineResult.Mined)
-        assertEquals(before + 1, world.wood)
-        assertFalse("a mined cell is a hole, not a shortcut", world.canStand(2, 2))
+        // Walk to the tree. The pond at x=5 blocks row 2, so go up to row 6
+        // (below the pond's last row), cross to x=2, then north.
+        world.step(Direction.UP)                      // 8,7 -> 8,6
+        assertEquals(6, world.playerY)
+        repeat(6) { world.step(Direction.LEFT) }      // 8,6 -> 2,6
+        assertEquals(2, world.playerX)
+        repeat(3) { world.step(Direction.UP) }        // 2,6 -> 2,3
+        assertEquals(3, world.playerY)
+        assertTrue("standing next to the tree now", world.mine(2, 2) is World.MineResult.Mined)
+
+        val near = World(MapJson.parseMap(mapJson(), MapJson.parseTileSet(tilesJson)),
+            MapJson.parseTileSet(tilesJson), startX = 2, startY = 3)
+        val before = near.wood
+        val mined = near.mine(2, 2)
+        assertTrue("adjacent tree must be minable", mined is World.MineResult.Mined)
+        assertEquals(before + 1, near.wood)
+        assertFalse("a mined cell is a hole, not a shortcut", near.canStand(2, 2))
     }
 
     @Test
@@ -452,13 +473,43 @@ class WorldTest {
     // ---------------------------------------------------------------- assets
 
     @Test
-    fun `the shipped tileset loads and every editor tile exists in it`() {
-        val json = java.io.File("src/main/assets/tileset/tileset.json")
-        assertTrue("tileset.json must be packaged in the app", json.exists())
-        val tiles = MapJson.parseTileSet(json.readText())
+    fun `the shipped tileset loads and has the tiles the game needs`() {
+        // Gradle runs unit tests with app/ as the working directory, so this is
+        // the file that ends up inside the APK.
+        val path = listOf(
+            java.io.File("src/main/assets/tileset/tileset.json"),
+            java.io.File("app/src/main/assets/tileset/tileset.json"),
+        ).firstOrNull { it.exists() }
+        assertNotNull("tileset.json must be packaged in the app", path)
+        val tiles = MapJson.parseTileSet(path!!.readText())
         assertEquals(16, tiles.tile)
-        for (name in listOf("grass", "path", "water", "tree", "roof", "wall_door")) {
+        for (name in listOf("grass", "path", "water", "tree", "roof", "wall_door",
+                            "machine_left", "machine_right")) {
             assertNotNull("missing tile: $name", tiles[name])
         }
+    }
+
+    @Test
+    fun `the shipped starter map is playable`() {
+        val dir = listOf("src/main/assets/tileset", "app/src/main/assets/tileset")
+            .map { java.io.File(it) }
+            .firstOrNull { it.resolve("map.json").exists() }
+        assertNotNull("map.json must be packaged in the app", dir)
+        val tiles = MapJson.parseTileSet(dir!!.resolve("tileset.json").readText())
+        val map = MapJson.parseMap(dir.resolve("map.json").readText(), tiles)
+
+        assertTrue("the starter map should be big enough to explore",
+            map.cols >= 40 && map.rows >= 25)
+        assertFalse("the spawn must not be inside a wall", map.isSolid(map.spawnX, map.spawnY, tiles))
+
+        // every cell the map mentions must use a tile that exists
+        var placed = 0
+        for ((x, y, cell) in map.entries()) {
+            placed++
+            for (name in listOfNotNull(cell.ground, cell.building, cell.objectTile)) {
+                assertNotNull("unknown tile '$name' at $x,$y", tiles[name])
+            }
+        }
+        assertTrue("the map should have cells", placed > 0)
     }
 }
