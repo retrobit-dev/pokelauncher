@@ -45,7 +45,7 @@ PAGE = """<!DOCTYPE html>
 </style>
 </head>
 <body>
-<img src="/docs/{shot}" alt="PokeLauncher di MatePad Mini">
+<img src="/docs/__SHOT__" alt="PokeLauncher di MatePad Mini">
 </body>
 </html>
 """
@@ -58,7 +58,7 @@ class PreviewHandler(http.server.BaseHTTPRequestHandler):
         path = urllib.parse.urlsplit(self.path).path
 
         if path in ("/", "/index.html"):
-            self.respond(PAGE.format(shot=SHOT).encode("utf-8"), "text/html; charset=utf-8")
+            self.respond(PAGE.replace("__SHOT__", SHOT).encode("utf-8"), "text/html; charset=utf-8")
             return
 
         if path.startswith("/docs/") and posixpath.basename(path) == SHOT:
