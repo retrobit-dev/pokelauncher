@@ -144,10 +144,25 @@ python3 tools/verify.py         # alias version catalog, call-site Compose, kunc
 python3 tools/render_preview.py  # regenerasi docs/preview-home.png (ponsel)
 python3 tools/render_tablet.py   # regenerasi kedua pratinjau tablet + bezel
 python3 tools/render_harmonyos.py # pratinjau dengan status bar + navigation bar EMUI
+python3 tools/preview_server.py  # pratinjau interaktif di http://localhost:8000
 ```
 
 Keduanya lulus tanpa error pada commit ini. Tetap jalankan `./gradlew assembleDebug` sekali di
 mesin Anda; jika ada error kompilasi, kirimkan log-nya ke sesi ini untuk diperbaiki.
+
+## Pratinjau interaktif (lokal)
+
+`preview/` berisi halaman statis bergaya HeartGold untuk melihat semua render sekaligus:
+
+```bash
+python3 tools/preview_server.py          # http://localhost:8000
+python3 tools/preview_server.py --port 9000
+```
+
+Halaman ini membaca PNG langsung dari `docs/`, jadi setelah menjalankan salah satu renderer
+cukup refresh browser. Fitur: tab perangkat (ponsel, tablet landscape/portrait, HarmonyOS),
+tombol perbesar 1:1, thumbnail, dan navigasi panah kiri/kanan. Server-nya hanya mengekspos
+`preview/` dan `docs/` — sisa repo tidak bisa diakses.
 
 ## Build APK lewat GitHub Actions
 
