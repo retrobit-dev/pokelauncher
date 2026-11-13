@@ -376,26 +376,77 @@ def check_preview_assets() -> None:
             fail("preview_server.py must serve only the landscape MatePad Mini render")
 
     check_punch_hole(os.path.join(docs, "preview-tablet.png"))
+    check_screen_is_opaque(os.path.join(docs, "preview-tablet.png"))
 
 
-def check_punch_hole(path: str) -> None:
-    """The selfie camera must sit in the TOP LEFT of the landscape screen.
+PAPER_CMYK = (251, 243, 220)   # HgColors.Paper #FBF3DC as RGBA bytes
 
-    The device has its punch hole in the top right corner of the portrait
-    panel; turning it counter clockwise for landscape carries that corner over
-    to the top left, which is what hands-on photos show. A render with the hole
-    in the other corner, or with a hole that is a token dot / a huge circle,
-    means the geometry regressed.
+
+def check_screen_is_opaque(path: str) -> None:
+    """The lit panel must actually show up: opaque, paper coloured, no UI.
+
+    Canvas defaults to alpha 0 so the bezel corners stay transparent. When the
+    screen is only filled with a colour and nothing paints over it, it is
+    copied in as a fully transparent rectangle, so the page background shows
+    through where the display should be - the render looks like a black slab.
+    Checking the header is not enough; sample real pixels.
     """
-    if not os.path.exists(path):
+    decoded = decode_png(path)
+    if decoded is None:
         return
+    width, height, rows = decoded
+
+    def pixel(x: int, y: int):
+        line = rows[y]
+        i = x * 4
+        return line[i], line[i + 1], line[i + 2], line[i + 3]
+
+    # The bezel is drawn as a dark frame, so the panel centre is a few percent
+    # inside the bitmap on every side.
+    inset = height // 8
+    centre = pixel(width // 2, height // 2)
+    if centre[3] != 255:
+        fail(f"the lit panel is transparent (alpha {centre[3]} at the centre); "
+             "Canvas needs alpha=255 for the screen fill")
+        return
+    if abs(centre[0] - PAPER_CMYK[0]) > 12 or abs(centre[2] - PAPER_CMYK[2]) > 12:
+        fail(f"the home screen should be empty HgColors.Paper, found {centre[:3]}")
+
+    # Sample a grid inside the panel: still empty, still opaque.
+    off = []
+    for fy in (0.25, 0.5, 0.75):
+        for fx in (0.25, 0.5, 0.75):
+            x = int(width * fx) if inset < width * fx < width - inset else width // 2
+            y = int(height * fy) if inset < height * fy < height - inset else height // 2
+            sample = pixel(x, y)
+            if sample[3] != 255 or sample[:3] != centre[:3]:
+                off.append((x, y, sample))
+    if off:
+        fail(f"the home screen must stay clean and uniform, found {off[0]}")
+
+    # And the body corner must still be transparent, so the rounded bezel reads
+    # on a white page instead of a hard black rectangle.
+    corner = pixel(1, 1)
+    if corner[3] != 0:
+        fail(f"body corner should be transparent, found alpha {corner[3]}")
+
+
+def decode_png(path: str):
+    """Decodes an 8-bit RGBA PNG into (width, height, list of row bytearrays).
+
+    Returns None when the file is missing or not the RGBA PNG this repo writes.
+    Shared by the pixel guards below so they check what a browser actually
+    shows instead of trusting the header alone.
+    """
+    import struct
     import zlib
 
+    if not os.path.exists(path):
+        return None
     with open(path, "rb") as handle:
         blob = handle.read()
     pos, idat, width, height, colour_type = 8, b"", 0, 0, None
     while pos + 8 <= len(blob):
-        import struct
         length = struct.unpack(">I", blob[pos:pos + 4])[0]
         tag = blob[pos + 4:pos + 8]
         body = blob[pos + 8:pos + 8 + length]
@@ -406,7 +457,7 @@ def check_punch_hole(path: str) -> None:
             idat += body
         pos += 12 + length
     if colour_type != 6 or not width or not height:
-        return
+        return None
 
     bpp, stride = 4, width * 4
     raw = zlib.decompress(idat)
@@ -437,6 +488,22 @@ def check_punch_hole(path: str) -> None:
                 line[i] = (line[i] + pred) & 255
         rows.append(line)
         prev = line
+    return width, height, rows
+
+
+def check_punch_hole(path: str) -> None:
+    """The selfie camera must sit in the TOP LEFT of the landscape screen.
+
+    The device has its punch hole in the top right corner of the portrait
+    panel; turning it counter clockwise for landscape carries that corner over
+    to the top left, which is what hands-on photos show. A render with the hole
+    in the other corner, or with a hole that is a token dot / a huge circle,
+    means the geometry regressed.
+    """
+    decoded = decode_png(path)
+    if decoded is None:
+        return
+    width, height, rows = decoded
 
     def dark(x: int, y: int) -> bool:
         i = x * 4

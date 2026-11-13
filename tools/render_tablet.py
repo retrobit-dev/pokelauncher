@@ -261,8 +261,12 @@ class Device:
 
         Mirrors HomeSurface() in LauncherScreen.kt, which now paints a single
         flat fill - no wallpaper, clock, party cards or status strip.
+
+        The fill must be opaque: Canvas defaults to alpha 0 so the bezel
+        corners stay transparent, and a screen that nothing else paints over
+        would otherwise be copied in as a fully transparent rectangle.
         """
-        cv = Canvas(self.w, self.h, PAPER)
+        cv = Canvas(self.w, self.h, PAPER, alpha=255)
 
         # round the panel corners, like the real OLED cut
         corner = self.SCREEN_CORNER
