@@ -11,6 +11,8 @@ Routes
   /editor/app.css       editor styles
   /docs/tileset/*       the tileset atlas and its index, read by the palette
   /api/map              the current map, saved by the editor
+                        (GET map.json falls back to the map shipped in the APK
+                        when no document has been saved yet)
   /docs/preview-tablet.png   the device render
 
 Only these paths are reachable; nothing else in the repo is exposed.
@@ -89,7 +91,13 @@ class PreviewHandler(http.server.BaseHTTPRequestHandler):
             name = posixpath.basename(path)
             if name in ("johto-tileset.png", "tileset.json", "map.json"):
                 kind = "image/png" if name.endswith(".png") else "application/json"
-                self.send_file(os.path.join(DOCS, "tileset", name), kind)
+                target = os.path.join(DOCS, "tileset", name)
+                if name == "map.json" and not os.path.exists(target):
+                    # No working document yet: open the map the app ships, so the
+                    # editor starts from the real village instead of a blank lawn.
+                    target = os.path.join(ROOT, "app", "src", "main", "assets",
+                                          "tileset", "map.json")
+                self.send_file(target, kind)
                 return
         if path == "/docs/" + SHOT:
             self.send_file(os.path.join(DOCS, SHOT), "image/png")

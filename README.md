@@ -187,15 +187,18 @@ lulus 39 unit test dan menerbitkan APK.
 
 ## Pratinjau interaktif (lokal)
 
-Halaman pratinjau hanya menampilkan **satu render MatePad Mini landscape**, tanpa keterangan:
-
 ```bash
 python3 tools/preview_server.py           # http://localhost:8000
 python3 tools/preview_server.py --port 9000
 ```
 
-Setelah `tools/render_tablet.py` dijalankan, cukup refresh browser. Server hanya menyajikan
-`/docs/preview-tablet.png`; sisa repo tidak bisa diakses.
+| Rute | Isi |
+| --- | --- |
+| `/` | Editor peta 16px: pilih tile, cat, hapus, isi kotak, simpan. |
+| `/device` | Render MatePad Mini landscape (hasil `tools/render_tablet.py`). |
+| `/docs/tileset/map.json` | Peta kerja editor; jika belum ada, server menyajikan peta bawaan APK. |
+
+Server hanya menyajikan rute di atas; sisa repo tidak bisa diakses.
 
 Punch hole kamera ada di **kiri atas** layar landscape: pada panel portrait hole-nya di sudut
 kanan atas, dan memutar tablet ke landscape (searah jarum jam, tombol volume di atas) membawa
