@@ -19,3 +19,7 @@ __pycache__/
 
 # reference photos pulled in for measurement (not part of the app)
 /image-search
+
+# the editor's working document, saved by tools/preview_server.py
+/docs/tileset/map.json
+/docs/tileset/map.json.bak

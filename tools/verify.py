@@ -373,7 +373,21 @@ def check_preview_assets() -> None:
     else:
         text = open(server, encoding="utf-8").read()
         if 'SHOT = "preview-tablet.png"' not in text:
-            fail("preview_server.py must serve only the landscape MatePad Mini render")
+            fail("preview_server.py must still serve the landscape MatePad Mini render")
+        for needle, why in (
+            ('path in ("/", "/index.html")', "the editor must be the front page"),
+            ('"/device"', "the device render must stay reachable at /device"),
+            ('"/api/map"', "the editor saves through /api/map"),
+            ('"johto-tileset.png"', "the palette reads the tileset atlas"),
+        ):
+            if needle not in text:
+                fail(f"preview_server.py: {why}")
+        # the editor must never fall back to serving the whole repo
+        for risky in ("SimpleHTTPRequestHandler", "directory=\"docs\""):
+            if risky in text:
+                fail(f"preview_server.py exposes files it should not ({risky})")
+
+    check_editor()
 
     check_punch_hole(os.path.join(docs, "preview-tablet.png"))
     check_screen_is_opaque(os.path.join(docs, "preview-tablet.png"))
@@ -607,6 +621,54 @@ def check_tileset() -> None:
                     fail(f"tileset '{name}' overlaps '{other}'")
                     break
                 seen[(xx, yy)] = name
+
+
+def check_editor() -> None:
+    """The map editor must stay wired to the tileset it edits.
+
+    A great way to ship a broken editor is a typo in an element id or a fetch
+    of a file the server no longer serves: the page loads, then silently does
+    nothing. Check the ids and the routes the script relies on.
+    """
+    import re
+
+    folder = os.path.join(ROOT, "editor")
+    page = os.path.join(folder, "index.html")
+    script = os.path.join(folder, "app.js")
+    styles = os.path.join(folder, "app.css")
+    for path in (page, script, styles):
+        if not os.path.exists(path):
+            fail(f"editor/{os.path.basename(path)} is missing")
+            return
+
+    html = open(page, encoding="utf-8").read()
+    js = open(script, encoding="utf-8").read()
+
+    html_ids = set(re.findall(r'id="([^"]+)"', html))
+    used = set(re.findall(r"\$\('([^']+)'\)", js))
+    used |= {f"tool-{tool}" for tool in ("pencil", "erase", "pick", "fill")}
+    for name in sorted(used - html_ids):
+        fail(f"editor/app.js looks up #{name} but index.html has no such element")
+
+    # the grid requirement: 16x16 cells
+    if "const TILE = 16;" not in js:
+        fail("editor/app.js must define the 16x16 grid cell (const TILE = 16)")
+
+    # the tileset must come from the server
+    for needle in ("/docs/tileset/tileset.json", "/docs/tileset/johto-tileset.png"):
+        if needle not in js:
+            fail(f"editor/app.js must load {needle}")
+
+    # the + button has to exist and open the tileset drawer
+    if 'id="add"' not in html:
+        fail("editor/index.html needs the + button")
+    if "toggleDrawer()" not in js:
+        fail("editor/app.js must open the tileset drawer from the + button")
+
+    # the stylesheet has to make the canvas fill the window
+    css = open(styles, encoding="utf-8").read()
+    if "position: fixed" not in css or "inset: 0" not in css:
+        fail("editor/app.css must pin the map canvas to the whole window")
 
 
 def main() -> int:

@@ -33,6 +33,14 @@ jobs:
           set -o pipefail
           ./gradlew --no-daemon --stacktrace --console=plain assembleDebug testDebugUnitTest 2>&1 | tee build.log
 
+      # The map editor is plain JS served by preview_server.py, so it is tested
+      # here rather than by Gradle: layout, the 16x16 grid, painting, bounds.
+      - name: Test the map editor
+        run: |
+          python3 tools/verify.py
+          python3 tools/static_check.py
+          node tools/editor_test.js
+
       # Raw job logs live on a blob host that some networks cannot reach, so the
       # compiler output is also emitted as workflow annotations (readable via
       # the REST API) and uploaded as an artifact.
