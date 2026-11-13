@@ -462,7 +462,7 @@ class WorldTest {
     fun `the camera does not move while the player is in the dead zone`() {
         val rig = CameraRig(
             viewWidth = 320, viewHeight = 240, mapWidth = 3200, mapHeight = 2400,
-            deadZoneX = 16, deadZoneY = 12,
+            deadZoneFractionX = 16f / 320f, deadZoneFractionY = 12f / 240f,
         )
         rig.jumpTo(1600, 1200)
         val startX = rig.x
@@ -471,6 +471,32 @@ class WorldTest {
         assertFalse(rig.advance(1600 + 8, 1200 + 6))
         assertEquals(startX, rig.x)
         assertEquals(startY, rig.y)
+    }
+
+    /**
+     * Regression guard for the bug this rig shipped with.
+     *
+     * The still zone used to be a fixed 2560/6 map pixels, a number that only
+     * describes a 1x viewport. Every other zoom got a still zone wider than the
+     * screen, so the band inverted and the camera pinned the player to the
+     * centre at 4x and above: no dead zone at all, and the world slid under the
+     * player on every step. The zone must be a fraction of the view.
+     */
+    @Test
+    fun `the dead zone scales with the zoom instead of shrinking to nothing`() {
+        val atOneX = CameraRig(viewWidth = 2560, viewHeight = 1600, mapWidth = 4000, mapHeight = 3000)
+        assertEquals("a sixth of the width", 2560 / 6, atOneX.deadZoneX)
+
+        val atEightX = CameraRig(viewWidth = 320, viewHeight = 200, mapWidth = 4000, mapHeight = 3000)
+        assertEquals("still a sixth, now of a much smaller view", 320 / 6, atEightX.deadZoneX)
+        assertTrue("the zone must stay smaller than the view", atEightX.deadZoneX < 320 / 2)
+
+        // and it must actually hold: a step inside the zone may not move the
+        // window at any zoom. The old code failed exactly here at 8x.
+        atEightX.jumpTo(2000, 1500)
+        val startX = atEightX.x
+        assertFalse("inside the zone the camera stays put", atEightX.advance(2000 + 20, 1500 + 10))
+        assertEquals(startX, atEightX.x)
     }
 
     @Test

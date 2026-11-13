@@ -67,9 +67,12 @@ class GameViewModel(context: Context) : ViewModel() {
         restoreWorld(world)
         world.waterDay = dayOf()
 
+        // The initial viewport has to use the same zoom as the first frame, or
+        // the rig clamps against a window four times too wide and the first
+        // render lands off-centre until Compose reports the real panel size.
         val rig = CameraRig(
-            viewWidth = 2560,
-            viewHeight = 1600,
+            viewWidth = PANEL_WIDTH_PX / DEFAULT_SCALE,
+            viewHeight = PANEL_HEIGHT_PX / DEFAULT_SCALE,
             mapWidth = map.widthPx,
             mapHeight = map.heightPx,
             startX = world.playerX * GameMap.TILE,
@@ -92,7 +95,11 @@ class GameViewModel(context: Context) : ViewModel() {
                 mapWidth = map.widthPx,
                 mapHeight = map.heightPx,
             ),
-            scale = 3,
+            // 8x: 20x12 cells on the panel, so the player is 128 px tall and
+            // the map is four screens wide, which is what makes the follow
+            // camera visible at all. 3x fitted the whole village on screen and
+            // read as a map, not as a place.
+            scale = DEFAULT_SCALE,
         )
         startSurvivalLoop()
         startCameraLoop()
@@ -480,6 +487,20 @@ class GameViewModel(context: Context) : ViewModel() {
 
     companion object {
         const val STEP_MILLIS = 140L
+
+        /**
+         * Default zoom, one of `TouchInput.STEPS`.
+         *
+         * Chosen from the panel: at 8x a cell is 128 px, the player is 128 px
+         * tall (8% of the screen height), and 20x12 cells are visible. The map
+         * is then 4x4 screens, so walking always moves the camera. 3x showed
+         * 53x33 cells and the whole village at once.
+         */
+        const val DEFAULT_SCALE = 8
+
+        /** The MatePad Mini panel, in pixels: the rig's viewport before Compose reports it. */
+        const val PANEL_WIDTH_PX = 2560
+        const val PANEL_HEIGHT_PX = 1600
 
         /** ~60 fps. One frame of camera movement is a few map pixels. */
         const val CAMERA_FRAME_MILLIS = 16L

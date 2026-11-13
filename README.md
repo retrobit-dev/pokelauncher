@@ -128,13 +128,18 @@ adalah skalanya (bilangan bulat), bukan gambarnya. Atlas yang sekarang 128×96 p
 plus pohon 32×32). Untuk menambah tile, atlas digandakan ke 256×256 px (16×16 slot), lalu
 512×512 px bila sudah lebih dari 256 tile.
 
-| Skala | Tile di layar | Ukuran fisik | Sel terlihat |
-| --- | --- | --- | --- |
-| 1× | 16 px | 1,2 mm | 160 × 100 |
-| 2× | 32 px | 2,4 mm | 80 × 50 |
-| 3× | 48 px | 3,6 mm | 53 × 33 |
-| 4× | 64 px | 4,7 mm | 40 × 25 |
-| 6× | 96 px | 7,1 mm | 26 × 16 |
+| Skala | Tile di layar | Ukuran fisik | Sel terlihat | Sprite / tinggi layar |
+| --- | --- | --- | --- | --- |
+| 1× | 16 px | 1,2 mm | 160 × 100 | 1 % |
+| 2× | 32 px | 2,4 mm | 80 × 50 | 2 % |
+| 3× | 48 px | 3,6 mm | 53 × 33 | 3 % |
+| 4× | 64 px | 4,7 mm | 40 × 25 | 4 % |
+| 6× | 96 px | 7,1 mm | 26 × 16 | 6 % |
+| **8×** | **128 px** | **9,5 mm** | **20 × 12** | **8 %** |
+
+Tampilan default **8×**. Di 3× seluruh desa muat di satu layar dan pemain hanya 3 % tinggi
+layar, jadi dunia terbaca sebagai peta, bukan sebagai tempat. Di 8× pemain 128 px, tile 128 px,
+dan petanya 4 × 4 layar — cukup lebar sehingga kamera benar-benar bergerak saat berjalan.
 
 Semua skala bilangan bulat supaya piksel tetap tajam di 343 ppi; skala pecahan seperti 2,5×
 akan membuat tile 1 px lebih lebar di sini dan lebih sempit di sana.
@@ -148,7 +153,7 @@ lebih kecil dari layar diletakkan di tengah.
 
 | Hal | Nilai |
 | --- | --- |
-| Zona mati | 1/6 panel (≈ 427 × 267 px peta) |
+| Zona mati | 1/6 pandangan, dihitung dari viewport (bukan konstanta px) |
 | Kecepatan | ≤ 5 px/frame, loop 16 ms (~60 fps) |
 | Resize/zoom | rig diukur ulang, lalu pemain tetap dijaga di dalam pandangan |
 | Uji | 5 tes Kotlin + skenario di `tools/world_rules_sim.py` |

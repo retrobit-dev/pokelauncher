@@ -24,9 +24,17 @@ class CameraRig(
     viewHeight: Int,
     mapWidth: Int,
     mapHeight: Int,
-    /** Half-width of the still zone around the centre, in map pixels. */
-    val deadZoneX: Int = DEFAULT_DEAD_ZONE_X,
-    val deadZoneY: Int = DEFAULT_DEAD_ZONE_Y,
+    /**
+     * Half-width of the still zone, as a fraction of the viewport.
+     *
+     * A fraction, not a pixel count: the still zone has to scale with the
+     * window. As a fixed 2560/6 px constant it was correct at 1x and wrong at
+     * every other zoom - at 3x it left the player one map pixel of freedom, and
+     * from 4x up the band inverted and the camera simply pinned the player to
+     * the centre. A fraction is the only definition that survives a zoom.
+     */
+    val deadZoneFractionX: Float = DEFAULT_DEAD_ZONE_FRACTION_X,
+    val deadZoneFractionY: Float = DEFAULT_DEAD_ZONE_FRACTION_Y,
     /** Largest jump allowed between frames, in map pixels. */
     val maxStep: Int = DEFAULT_MAX_STEP,
     startX: Int = 0,
@@ -50,6 +58,15 @@ class CameraRig(
     init {
         jumpTo(startX, startY)
     }
+
+    /**
+     * The still zone in map pixels, recomputed from the current viewport.
+     *
+     * Derived rather than stored: `resize()` is the one place the viewport
+     * changes, and a cached copy would be one more thing to forget to update.
+     */
+    val deadZoneX: Int get() = (viewWidth * deadZoneFractionX).toInt().coerceAtLeast(0)
+    val deadZoneY: Int get() = (viewHeight * deadZoneFractionY).toInt().coerceAtLeast(0)
 
     /** The current window, for the renderer. */
     fun camera(): Camera = Camera(
@@ -122,11 +139,13 @@ class CameraRig(
 
     companion object {
         /**
-         * A third of the panel is still, which is roughly what the GBA games
-         * used. Expressed in map pixels: the view is in map pixels already.
+         * A sixth of the view on each side is still, so the player roams the
+         * middle two thirds of the screen before the camera budges. This is the
+         * fraction the design was always meant to express; the old code baked
+         * it into 2560/6 px, which only worked at 1x zoom.
          */
-        const val DEFAULT_DEAD_ZONE_X = 2560 / 6
-        const val DEFAULT_DEAD_ZONE_Y = 1600 / 6
+        const val DEFAULT_DEAD_ZONE_FRACTION_X = 1f / 6f
+        const val DEFAULT_DEAD_ZONE_FRACTION_Y = 1f / 6f
 
         /** ~5 map px at 60 fps: fast enough to catch up, slow enough to read. */
         const val DEFAULT_MAX_STEP = 5

@@ -109,12 +109,28 @@ for (tx, ty) in torches:
 if NIGHT:
     world = night(world, torches)
 
-# Show the world at 2x (a 1280x800 map is the test map; 2x reads like a tablet)
-Z=2
-scale=Image(WW*Z, WH*Z)
-for y in range(WH*Z):
-    for x in range(WW*Z):
-        scale.buf[(y*WW*Z+x)*4:(y*WW*Z+x)*4+4]=world.buf[((y//Z)*WW+(x//Z))*4:((y//Z)*WW+(x//Z))*4+4]
+# What the panel actually shows: the camera window at the app's default zoom,
+# not the whole map shrunk to fit. Rendering all 80x50 cells at 2x made the
+# world look tiny and was the reason the tablet shot read as a map rather than
+# a place. DEFAULT_ZOOM must match GameViewModel.DEFAULT_SCALE.
+DEFAULT_ZOOM = 8
+PANEL_W, PANEL_H = 2560, 1600
+Z = DEFAULT_ZOOM
+view_w, view_h = PANEL_W // Z, PANEL_H // Z      # 320 x 200 map px
+
+# centre on the player, then clamp so the window never leaves the map
+x0 = max(0, min(WW - view_w, sp['x'] * PX - view_w // 2)) if WW > view_w else (WW - view_w) // 2
+y0 = max(0, min(WH - view_h, sp['y'] * PX - view_h // 2)) if WH > view_h else (WH - view_h) // 2
+
+scale = Image(PANEL_W, PANEL_H)
+for y in range(PANEL_H):
+    sy = y0 + y // Z
+    for x in range(PANEL_W):
+        sx = x0 + x // Z
+        if 0 <= sx < WW and 0 <= sy < WH:
+            src = (sy * WW + sx) * 4
+            dst = (y * PANEL_W + x) * 4
+            scale.buf[dst:dst + 4] = world.buf[src:src + 4]
 
 # Night: the same scene, one blue overlay, with the lit cells left clear.
 PAPER=(251,243,220); INK=(59,47,30); FAINT=(154,135,104)
