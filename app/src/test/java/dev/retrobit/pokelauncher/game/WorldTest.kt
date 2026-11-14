@@ -748,14 +748,19 @@ class WorldTest {
             map.cols >= 40 && map.rows >= 25)
         assertFalse("the spawn must not be inside a wall", map.isSolid(map.spawnX, map.spawnY, tiles))
 
-        // every cell the map mentions must use a tile that exists
-        var placed = 0
+        // The starter map is deliberately empty while the world is redrawn from
+        // scratch, so "has cells" is no longer a valid expectation. What still
+        // has to hold is that the map is well formed: every cell it does mention
+        // uses a tile that exists, and the map is not smaller than one gameplay
+        // frame (16x10 cells on a 2560x1600 panel at 10x).
+        assertTrue("the spawn must be inside the map",
+            map.spawnX in 0 until map.cols && map.spawnY in 0 until map.rows)
+        assertTrue("the map must fit at least one gameplay frame",
+            map.cols >= 16 && map.rows >= 10)
         for ((x, y, cell) in map.entries()) {
-            placed++
             for (name in listOfNotNull(cell.ground, cell.building, cell.objectTile)) {
                 assertNotNull("unknown tile '$name' at $x,$y", tiles[name])
             }
         }
-        assertTrue("the map should have cells", placed > 0)
     }
 }
