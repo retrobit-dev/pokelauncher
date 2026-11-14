@@ -48,11 +48,26 @@ class TouchInputTest {
     }
 
     @Test
-    fun `zooming out from the default steps down instead of jumping to 1x`() {
+    fun `pinching out from the default steps down one level, not to 1x`() {
+        // pinchFactor < 0.8 is the zoom-out direction; > 1.25 zooms in. Getting
+        // those two backwards is exactly the mistake this test caught.
         val start = TouchInput.defaultIndex()
         assertTrue("the default must not be the smallest step", start > 0)
-        val out = TouchInput.zoomStep(TouchInput.DEFAULT, 1.5f)
+
+        val out = TouchInput.zoomStep(TouchInput.DEFAULT, 0.5f)
         assertEquals(TouchInput.STEPS[start - 1], out)
-        assertEquals("one step down, not all the way to 1x", 8, out)
+        assertEquals("one step down from 10x is 8x, not 1x", 8, out)
+    }
+
+    @Test
+    fun `pinching in from the default steps up one level`() {
+        val start = TouchInput.defaultIndex()
+        if (start == TouchInput.STEPS.lastIndex) return   // nothing above 12x
+        assertEquals(TouchInput.STEPS[start + 1], TouchInput.zoomStep(TouchInput.DEFAULT, 1.5f))
+    }
+
+    @Test
+    fun `a pinch that is not a clear gesture keeps the zoom`() {
+        assertEquals(TouchInput.DEFAULT, TouchInput.zoomStep(TouchInput.DEFAULT, 1.0f))
     }
 }
