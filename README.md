@@ -281,10 +281,10 @@ python3 tools/verify.py            # tileset, aset aplikasi, rute server, editor
 python3 tools/static_check.py      # XML, referensi @resource, impor Kotlin
 python3 tools/kotlin_symbols.py    # simbol dipakai tapi tidak diimpor
 python3 tools/kotlin_calls.py      # argumen @Composable yang hilang
-node    tools/editor_test.js       # editor: grid 16px, cat, hapus, isi, batas peta
-node    tools/editor_load_test.js  # peta bawaan termuat utuh di editor
+node    tools/editor_test.js       # editor: cat/hapus/isi, zoom 0.5x, bingkai gameplay
+node    tools/editor_load_test.js  # peta bawaan (kini kosong) termuat utuh
 node    tools/game_rules_test.js   # aturan dunia, versi JS dari WorldTest
-node    tools/validate_starter_map.js
+node    tools/validate_starter_map.js   # peta kosong tetap valid: spawn di dalam, >= 16x10
 python3 tools/world_rules_sim.py   # skenario WorldTest tanpa JDK
 python3 tools/render_map.py <map.json> <out.png> [skala]
 python3 tools/preview_server.py    # editor peta di http://localhost:8000
