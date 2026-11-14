@@ -130,15 +130,19 @@ DEVICE_PAGE = """<!DOCTYPE html>
     justify-content: center;
   }
   nav button {
-    font: 600 15px/1 ui-sans-serif, system-ui, sans-serif;
-    letter-spacing: .02em;
+    /* one square icon button: no text label, so the row never reflows */
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    font-size: 22px;
+    line-height: 1;
     color: var(--ink);
     background: var(--btn);
     border: 2px solid var(--ink);
-    border-radius: 999px;
-    padding: 11px 22px;
+    border-radius: 14px;
+    padding: 0;
     cursor: pointer;
-    min-height: 44px;            /* comfortable tap target */
   }
   nav button[aria-pressed="true"] {
     background: var(--btn-on);
@@ -170,8 +174,14 @@ DEVICE_PAGE = """<!DOCTYPE html>
   <!-- The mode tabs sit above the tablet: they switch what the screen shows,
        so they belong on the chrome, not inside the device. -->
   <nav aria-label="Mode tampilan">
-    <button id="mode-game" aria-pressed="true">Mode gameplay</button>
-    <button id="mode-editor" aria-pressed="false">Mode map editor</button>
+    <!-- Icons only: the names live in aria-label and title, so the row stays
+         short and a screen reader still says what each one does. -->
+    <button id="mode-game" aria-pressed="true" aria-label="Mode gameplay" title="Mode gameplay">
+      <span aria-hidden="true">🎮</span>
+    </button>
+    <button id="mode-editor" aria-pressed="false" aria-label="Mode map editor" title="Mode map editor">
+      <span aria-hidden="true">🗺</span>
+    </button>
     <span id="render-state" data-state="__RENDERING__" role="status"></span>
   </nav>
 

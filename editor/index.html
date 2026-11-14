@@ -8,35 +8,68 @@
 </head>
 <body>
 
-<!-- the map: a full-screen grid of 16x16 cells drawn on canvas -->
+<!-- the map: a full grid of 16x16 cells, drawn on canvas above the tool bar -->
 <canvas id="map" aria-label="Peta Johto"></canvas>
 
-<!-- tools: a bar under the map, never on top of it. "Di bawah layar tablet"
-     was the request, and it is also the only way the map keeps the full
-     width for painting. -->
+<!-- tools: one bar under the map, never on top of it. Every button is the
+     same square size; the label under each icon is the only text. -->
 <div id="tools" role="toolbar" aria-label="Alat editor">
-  <button id="tool-pencil" class="tool active" title="Gambar (B)" data-key="b">✎</button>
-  <button id="tool-erase" class="tool" title="Hapus (E)" data-key="e">⌫</button>
-  <button id="tool-pick" class="tool" title="Ambil tile (I)" data-key="i">◉</button>
-  <button id="tool-fill" class="tool" title="Isi area (G)" data-key="g">▨</button>
-  <span class="divider" aria-hidden="true"></span>
-  <button id="save" class="tool save" title="Simpan peta (S)" data-key="s">Simpan</button>
-  <span class="divider" aria-hidden="true"></span>
-  <button id="view-fit" class="tool" title="Muat seluruh peta (F)" data-key="f">⤢</button>
-  <button id="view-1x" class="tool" title="Sel 16x16 px (1)" data-key="1">1:1</button>
-  <button id="add" class="add" title="Tambah objek / tile" aria-label="Tambah objek">+</button>
+  <button id="tool-pencil" class="tool active" title="Gambar (B)" data-key="b" aria-pressed="true">
+    <span class="ico" aria-hidden="true">✎</span><span class="lbl">Gambar</span>
+  </button>
+  <button id="tool-erase" class="tool" title="Hapus (E)" data-key="e" aria-pressed="false">
+    <span class="ico" aria-hidden="true">⌫</span><span class="lbl">Hapus</span>
+  </button>
+  <button id="tool-pick" class="tool" title="Ambil tile (I)" data-key="i" aria-pressed="false">
+    <span class="ico" aria-hidden="true">◉</span><span class="lbl">Ambil</span>
+  </button>
+  <button id="tool-fill" class="tool" title="Isi area (G)" data-key="g" aria-pressed="false">
+    <span class="ico" aria-hidden="true">▨</span><span class="lbl">Isi</span>
+  </button>
 
-  <!-- status: tool, cursor cell, map size -->
-  <div id="hud">
+  <span class="divider" aria-hidden="true"></span>
+
+  <button id="view-out" class="tool" title="Perkecil (≤)" data-key="-">
+    <span class="ico" aria-hidden="true">−</span><span class="lbl">Perkecil</span>
+  </button>
+  <button id="view-zoom" class="tool zoom" title="Zoom sekarang, klik untuk 1x">
+    <span class="ico" id="zoom-value" aria-hidden="true">1×</span><span class="lbl">Zoom</span>
+  </button>
+  <button id="view-in" class="tool" title="Perbesar (≥)" data-key="+">
+    <span class="ico" aria-hidden="true">+</span><span class="lbl">Perbesar</span>
+  </button>
+  <button id="view-fit" class="tool" title="Muat seluruh peta (F)" data-key="f">
+    <span class="ico" aria-hidden="true">⤢</span><span class="lbl">Muat</span>
+  </button>
+
+  <span class="divider" aria-hidden="true"></span>
+
+  <button id="save" class="tool save" title="Simpan peta (S)">
+    <span class="ico" aria-hidden="true">💾</span><span class="lbl">Simpan</span>
+  </button>
+  <button id="new" class="tool new" title="Peta baru (N)">
+    <span class="ico" aria-hidden="true">✚</span><span class="lbl">Baru</span>
+  </button>
+
+  <span class="divider" aria-hidden="true"></span>
+
+  <button id="add" class="tool tiles" title="Tambah objek / tile" aria-label="Tambah objek">
+    <span class="ico" aria-hidden="true">＋</span><span class="lbl">Tile</span>
+  </button>
+
+  <!-- status: tool, cursor cell, map size, frame of the gameplay viewport -->
+  <div id="hud" aria-live="off">
     <span id="hud-tool">Pensil</span>
     <span class="sep">·</span>
     <span id="hud-cell">0, 0</span>
     <span class="sep">·</span>
     <span id="hud-size">–</span>
+    <span class="sep">·</span>
+    <span id="hud-frame">–</span>
   </div>
 </div>
 
-<!-- tileset drawer, opened by the + button -->
+<!-- tileset drawer, opened by the Tile button -->
 <aside id="drawer" hidden aria-label="Tileset">
   <header>
     <h1>TILESET</h1>

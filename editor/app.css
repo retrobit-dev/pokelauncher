@@ -1,4 +1,15 @@
-/* Johto map editor: the map owns the whole window, the chrome floats above. */
+/* Johto map editor.
+ *
+ * The map is a grid of 16x16 cells. The canvas fills everything above the tool
+ * bar; the view scrolls with WASD, arrows, wheel, two-finger pan or space drag,
+ * and zooms with the wheel, pinch or the -/+/1x buttons.
+ *
+ * Tools: pencil, eraser, picker, area fill. The Tile button opens the tileset.
+ *
+ * One thing here is not a drawing aid: the gameplay frame. It marks the cells
+ * that `Mode gameplay` will show, using the same zoom and dead-zone rule as
+ * CameraRig.kt, so what you see framed is what the tablet will show.
+ */
 :root {
   --paper: #fbf3dc;
   --paper-deep: #f3e4bf;
@@ -6,10 +17,13 @@
   --ink-soft: #6b5b44;
   --gold: #e0b84c;
   --red: #c53a2d;
+  --green: #6ba05a;
   --shadow: 0 8px 22px rgba(59, 47, 30, .22);
   --radius: 14px;
-  /* height of the tool bar: the map and the drawer both clear it */
-  --bar-h: 68px;
+  /* the bar's height: the map and the drawer both clear it */
+  --bar-h: 76px;
+  /* one size for every tool button, icon and label included */
+  --btn: 56px;
 }
 
 * { box-sizing: border-box; }
@@ -36,26 +50,10 @@ html, body {
   width: 100%;
   height: calc(100% - var(--bar-h));
   display: block;
-  touch-action: none;
+  touch-action: none;          /* pinch and two-finger pan are handled here */
   cursor: crosshair;
   image-rendering: pixelated;
 }
-
-/* ------------------------------------------------------------ hud
-   Status lives inside the bar now, so it never sits on the drawing area. */
-#hud {
-  margin-left: auto;          /* pushed to the right end of the bar */
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--paper) 88%, transparent);
-  font-size: 12px;
-  color: var(--ink-soft);
-  pointer-events: none;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-#hud .sep { opacity: .45; margin: 0 4px; }
-#hud-tool { color: var(--ink); font-weight: 700; }
 
 /* ------------------------------------------------------------ tools
    A bar pinned to the bottom edge, full width, above nothing. */
@@ -66,9 +64,9 @@ html, body {
   bottom: 0;
   height: var(--bar-h);
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
-  padding: 0 12px;
+  padding: 0 10px;
   background: var(--paper);
   border-top: 2px solid var(--ink);
   box-shadow: 0 -4px 16px rgba(59, 47, 30, .16);
@@ -77,62 +75,85 @@ html, body {
   scrollbar-width: thin;
 }
 
-.tool, .add {
+/*
+ * Every button is the same square. The icon sits on top, its label underneath,
+ * so a long word like "Perbesar" cannot make its button wider than the rest.
+ */
+.tool {
+  flex: 0 0 auto;
+  width: var(--btn);
+  height: var(--btn);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0;
   border: 2px solid var(--ink);
+  border-radius: 12px;
   background: var(--paper);
   color: var(--ink);
   cursor: pointer;
   font: inherit;
-  border-radius: 12px;
-  transition: transform .08s ease, background .12s ease;
-}
-.tool {
-  width: 40px;
-  height: 40px;
-  font-size: 17px;
-  line-height: 1;
   box-shadow: var(--shadow);
+  transition: transform .08s ease, background .12s ease;
 }
 .tool:hover { background: var(--paper-deep); }
 .tool:active { transform: translateY(1px); }
 .tool.active {
   background: var(--gold);
-  border-color: var(--ink);
   box-shadow: 0 0 0 3px rgba(224, 184, 76, .35), var(--shadow);
 }
-
-#view-1x { font-size: 11px; letter-spacing: -.02em; }
-.tool.save {
-  width: auto;
-  padding: 0 16px;
-  font-size: 13px;
-  font-weight: 700;
-  background: var(--gold);
+.tool .ico {
+  font-size: 20px;
+  line-height: 1;
+  /* every glyph is centred in the same box, so mixed fonts still line up */
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
 }
+.tool .lbl {
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: .02em;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tool.zoom .ico { font-size: 13px; font-weight: 700; }
+.tool.save { background: var(--gold); }
 .tool.save:hover { background: #eecb68; }
+.tool.new { background: var(--paper-deep); }
+.tool.tiles { background: var(--red); color: var(--paper); border-color: #7d2418; }
+.tool.tiles:hover { background: #b03225; }
+.tool.tiles[aria-expanded="true"] { background: var(--gold); color: var(--ink); border-color: var(--ink); }
+
 .divider {
-  width: 1px;
-  height: 28px;
-  background: rgba(59, 47, 30, .35);
+  flex: 0 0 auto;
+  width: 2px;
+  height: 34px;
+  background: rgba(59, 47, 30, .25);
   margin: 0 2px;
 }
 
-/* the + button: the way into the tileset */
-.add {
-  width: 48px;
-  height: 48px;
-  font-size: 26px;
-  font-weight: 700;
-  line-height: 1;
-  padding: 0 0 3px;
-  box-shadow: 0 0 0 3px rgba(197, 58, 45, .18), var(--shadow);
-  background: var(--red);
-  color: var(--paper);
-  border-color: #7d2418;
+/* ------------------------------------------------------------ hud
+   Status lives inside the bar, at the right end, so it never sits on the
+   drawing area. */
+#hud {
+  margin-left: auto;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  font-size: 11px;
+  color: var(--ink-soft);
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
-.add:hover { background: #b03225; }
-.add:active { transform: translateY(1px); }
-.add[aria-expanded="true"] { background: var(--gold); color: var(--ink); border-color: var(--ink); }
+#hud .sep { opacity: .45; margin: 0 4px; }
+#hud-tool { color: var(--ink); font-weight: 700; }
 
 /* ------------------------------------------------------------ drawer */
 #drawer {
@@ -150,6 +171,7 @@ html, body {
   background: var(--paper);
   box-shadow: var(--shadow);
   animation: slide .16s ease-out;
+  z-index: 6;
 }
 #drawer[hidden] { display: none; }
 
@@ -158,16 +180,8 @@ html, body {
   to   { transform: none; opacity: 1; }
 }
 
-#drawer header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-#drawer h1 {
-  margin: 0;
-  font-size: 13px;
-  letter-spacing: .12em;
-}
+#drawer header { display: flex; align-items: center; gap: 8px; }
+#drawer h1 { margin: 0; font-size: 13px; letter-spacing: .12em; }
 #close {
   margin-left: auto;
   width: 30px;
@@ -183,11 +197,7 @@ html, body {
 }
 #close:hover { background: #e9d7ae; }
 
-#tabs {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
+#tabs { display: flex; gap: 6px; flex-wrap: wrap; }
 .tab {
   border: 2px solid var(--ink-soft);
   background: transparent;
@@ -228,11 +238,7 @@ html, body {
   color: var(--ink-soft);
 }
 .cell:hover { border-color: var(--ink-soft); }
-.cell[aria-pressed="true"] {
-  border-color: var(--ink);
-  background: var(--gold);
-  color: var(--ink);
-}
+.cell[aria-pressed="true"] { border-color: var(--ink); background: var(--gold); color: var(--ink); }
 .cell canvas {
   width: 48px;
   height: 48px;
@@ -246,23 +252,27 @@ html, body {
   word-break: break-word;
   max-width: 100%;
 }
-.cell .tag {
-  font-size: 8px;
-  opacity: .7;
-  letter-spacing: .04em;
-}
+.cell .tag { font-size: 8px; opacity: .7; letter-spacing: .04em; }
 
-#drawer-info {
-  font-size: 11px;
+/* the palette is empty until tiles exist: say what to do, not just nothing */
+#palette .empty {
+  grid-column: 1 / -1;
+  padding: 18px 12px;
+  border: 2px dashed var(--ink-soft);
+  border-radius: 12px;
   color: var(--ink-soft);
-  min-height: 1.2em;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
-/* ------------------------------------------------------------ toast */
+#drawer-info { font-size: 11px; color: var(--ink-soft); min-height: 1.2em; }
+
+/* ------------------------------------------------------------ toast
+   Sits above the bar, never on it. */
 #toast {
   position: fixed;
   left: 50%;
-  bottom: 18px;
+  bottom: calc(var(--bar-h) + 14px);
   transform: translateX(-50%);
   padding: 8px 14px;
   border-radius: 999px;
@@ -271,6 +281,7 @@ html, body {
   font-size: 12px;
   pointer-events: none;
   animation: pop .18s ease-out;
+  z-index: 7;
 }
 #toast[hidden] { display: none; }
 @keyframes pop {
@@ -278,13 +289,9 @@ html, body {
   to   { opacity: 1; transform: translate(-50%, 0); }
 }
 
-/* ------------------------------------------------------------ toast
-   Sits above the bar, never on it. */
-#toast { bottom: calc(var(--bar-h) + 14px); }
-
 /* narrow screens: the drawer covers the map instead of squeezing beside it */
 @media (max-width: 620px) {
-  :root { --bar-h: 60px; }
+  :root { --bar-h: 68px; --btn: 50px; }
   #drawer { left: 12px; width: auto; }
   #hud { display: none; }
 }

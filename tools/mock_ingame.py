@@ -35,7 +35,9 @@ doc=json.load(open(_map))
 atlas=read_png(os.path.join(ROOT,'docs/tileset/johto-tileset.png'))
 PX=16
 WW,WH=doc['cols']*PX, doc['rows']*PX
-world=Image(WW,WH)
+# Empty ground: the same moss green the app paints behind the tiles
+# (WorldCanvas.kt), so an undrawn map looks the same here as on the device.
+world=Image(WW,WH,(0x5C,0x7A,0x45))
 for layer in ('ground','building','object'):
     for k,c in doc['cells'].items():
         name=c.get(layer)
@@ -89,8 +91,10 @@ for yy in range(16):
 
 # A planted field: tilled soil with sprouts of three ages, and two torches.
 # Drawn here rather than loaded, because crops are runtime state, not map data.
+# Gated on the map having cells: the starter map is deliberately empty now, and
+# a field floating on black would show scenery the map itself does not contain.
 field_x, field_y = sp['x'] - 2, sp['y'] + 2
-for row in range(3):
+for row in range(3 if doc['cells'] else 0):
     for col in range(4):
         cx, cy = (field_x + col) * PX, (field_y + row) * PX
         rect(world, cx, cy, PX, PX, (0x6B, 0x4F, 0x33))
@@ -105,7 +109,8 @@ for row in range(3):
             rect(world, cx + 9, cy + 13 - h // 2, 3, 2, (0x8F, 0xBE, 0x4A))
         if stage == 3:  # ripe: a grain head, the thing you harvest
             rect(world, cx + 6, cy + 13 - h, 4, 3, (0xE8, 0xC5, 0x5C))
-torches = ((sp['x'] + 2, sp['y'] + 1), (sp['x'] + 1, sp['y'] + 5), (sp['x'] - 4, sp['y'] + 4))
+torches = (((sp['x'] + 2, sp['y'] + 1), (sp['x'] + 1, sp['y'] + 5),
+            (sp['x'] - 4, sp['y'] + 4)) if doc['cells'] else ())
 for (tx, ty) in torches:
     rect(world, tx * PX + 6, ty * PX + 4, 4, 10, (0x6B, 0x4B, 0x2E))
     rect(world, tx * PX + 7, ty * PX + 2, 2, 3, (0xE8, 0x8B, 0x2E))

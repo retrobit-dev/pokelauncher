@@ -17,7 +17,8 @@ class E{constructor(){this.style={};this.dataset={};this.hidden=false;this.textC
  addEventListener(){} removeEventListener(){} setPointerCapture(){}
  getBoundingClientRect(){return{left:0,top:0,width:2560,height:1600}}
  getContext(){const n=()=>{};return{setTransform:n,fillRect:n,drawImage:n,beginPath:n,moveTo:n,
- lineTo:n,stroke:n,strokeRect:n,save:n,restore:n,imageSmoothingEnabled:false}}}
+ lineTo:n,stroke:n,strokeRect:n,save:n,restore:n,rect:n,clip:n,fill:n,arc:n,
+ imageSmoothingEnabled:false,canvas:{width:0,height:0}}}}
 const document={_byId:{},getElementById(id){return this._byId[id]||(this._byId[id]=new E())},
  createElement(){return new E()},body:new E()};
 const window={innerWidth:2560,innerHeight:1600,devicePixelRatio:1,addEventListener(){},setTimeout,clearTimeout};
@@ -40,12 +41,22 @@ m.boot().then(()=>{
   const expect = Object.values(JSON.parse(fs.readFileSync(path.join(ROOT,'app/src/main/assets/tileset/map.json'),'utf8')).cells)
     .reduce((n,c)=>n+Object.keys(c).length,0);
   check('setiap lapisan terbaca', st.cells.size, expect);
-  // a tree cell must keep its grass
-  const treeKey=Object.entries(JSON.parse(fs.readFileSync(path.join(ROOT,'app/src/main/assets/tileset/map.json'),'utf8')).cells)
-    .find(([,c])=>c.object==='tree');
-  const [tx,ty]=treeKey[0].split(',').map(Number);
-  check('pohon ada', st.cells.get(m.layerKey(tx,ty,'object'))?.name, 'tree');
-  check('rumput di bawah pohon', st.cells.get(m.layerKey(tx,ty,'ground'))?.name, treeKey[1].ground);
+  if (expect) {
+    // a tree cell must keep its grass: this is the round trip that decides
+    // whether a layered map survives the editor
+    const treeKey=Object.entries(JSON.parse(fs.readFileSync(path.join(ROOT,'app/src/main/assets/tileset/map.json'),'utf8')).cells)
+      .find(([,c])=>c.object==='tree');
+    if (treeKey) {
+      const [tx,ty]=treeKey[0].split(',').map(Number);
+      check('pohon ada', st.cells.get(m.layerKey(tx,ty,'object'))?.name, 'tree');
+      check('rumput di bawah pohon', st.cells.get(m.layerKey(tx,ty,'ground'))?.name, treeKey[1].ground);
+    }
+  } else {
+    // The shipped map is empty on purpose while the world is rebuilt. An empty
+    // file must load as an empty editor, not be re-seeded with a default lawn.
+    check('peta kosong dimuat sebagai nol sel', st.cells.size, 0);
+    check('editor tidak mengisi peta kosong sendiri', st.loadedMap, true);
+  }
   m.fitToScreen();
   check('zoom fit 1:1 di 2560x1600', st.zoom, 1);
   check('sel 16px', m.cellSize(), 16);

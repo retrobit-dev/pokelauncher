@@ -14,6 +14,8 @@ Checks performed:
 """
 from __future__ import annotations
 
+import json
+import math
 import os
 import re
 import sys
@@ -463,13 +465,29 @@ def check_preview_screen(path: str) -> None:
                 fail(f"the panel is transparent at {x},{y}; the screen must be opaque")
                 return
             seen[sample[:3]] = seen.get(sample[:3], 0) + 1
-    if len(seen) < 3:
+    # The starter map is deliberately empty (the map is being redrawn from
+    # scratch), so a black panel is the correct picture right now: there is no
+    # grass to find. What must still hold is that the screen is opaque and that
+    # the player is drawn on it - checked below.
+    map_empty = False
+    try:
+        with open(os.path.join(ROOT, "app", "src", "main", "assets", "tileset",
+                               "map.json"), encoding="utf-8") as handle:
+            map_empty = not json.load(handle).get("cells")
+        working = os.path.join(ROOT, "docs", "tileset", "map.json")
+        if os.path.exists(working):
+            with open(working, encoding="utf-8") as handle:
+                map_empty = not json.load(handle).get("cells")
+    except (OSError, ValueError):
+        map_empty = False
+
+    if len(seen) < 3 and not map_empty:
         fail(f"the panel is {len(seen)} colour(s), so the field is not being drawn; "
              "run tools/mock_ingame.py --field before rendering the tablet")
 
-    # 3b. grass must be on screen: this is the tileset's lawn, and it is what
-    # separates a real field render from any other picture in the frame. The
-    # colours come from tools/tileset/palette.py, not from guessing.
+    # 3b. grass must be on screen whenever the map has cells to draw: this is
+    # the tileset's lawn, and it is what separates a real field render from any
+    # other picture in the frame. The colours come from tools/tileset/palette.py.
     sys.path.insert(0, os.path.join(ROOT, "tools"))
     from tileset import palette as P
 
@@ -486,7 +504,7 @@ def check_preview_screen(path: str) -> None:
             sample = pixel(x, y)
             if any(near(sample[:3], g) for g in grass):
                 hits += 1
-    if hits < 200:
+    if hits < 200 and not map_empty:
         fail(f"only {hits} grass samples on the panel; the field render is missing")
 
     # 3c. the player sprite is drawn. A 16px sprite scaled into the panel is a
@@ -605,36 +623,43 @@ def check_punch_hole(path: str) -> None:
     bezel = max(8, height // 40) + margin
     inner_w, inner_h = width - 2 * bezel, height - 2 * bezel
 
-    # A punch hole is a dark disc that is much darker than the UI around it.
-    # Restrict the search to the top strip inside the panel, split into halves.
-    strip = bezel + max(40, inner_h // 8)
-    counts = {"left": 0, "right": 0}
-    for y in range(bezel, strip):
-        for x in range(bezel, width - bezel):
-            if dark(x, y):
-                counts["left" if x < width // 2 else "right"] += 1
-    if counts["left"] < 2000 or counts["right"] > counts["left"] * 0.6:
-        fail(f"punch hole should sit in the top LEFT of the landscape screen, "
-             f"dark pixels in top strip: left={counts['left']} right={counts['right']}")
-
-    # Size sanity: the hole spans a few percent of the screen width, not a dot
-    # and not a fist sized circle. Measure the dark blob in the top left corner
-    # window only, so the UI icons below and the bezel never enter the box.
+    # A punch hole is a dark disc that sits *on* the panel: there is screen on
+    # the side that faces into the display, and bezel behind it. Measuring the
+    # blob and then checking the panel just past its edge is what distinguishes
+    # a real camera from the bezel itself, and it holds whatever the map does -
+    # green field, black field, or a full map with a HUD over it.
     window_w, window_h = max(60, inner_w // 10), max(60, inner_h // 8)
     xs, ys = [], []
     for y in range(bezel, bezel + window_h):
+        line = rows[y]
         for x in range(bezel, bezel + window_w):
-            if dark(x, y):
+            i = x * 4
+            if (line[i] + line[i + 1] + line[i + 2]) / 3 < 45:
                 xs.append(x)
                 ys.append(y)
     if not xs:
         fail("punch hole not found in the top left corner of the screen")
-    else:
-        diameter = max(max(xs) - min(xs), max(ys) - min(ys)) + 1
-        if not (0.02 * inner_w <= diameter <= 0.08 * inner_w):
-            fail(f"punch hole diameter {diameter}px on a {inner_w}px wide panel "
-                 "is off; expect about 3-5% of the panel width")
+        return
 
+    diameter = max(max(xs) - min(xs), max(ys) - min(ys)) + 1
+    if not (0.02 * inner_w <= diameter <= 0.08 * inner_w):
+        fail(f"punch hole diameter {diameter}px on a {inner_w}px wide panel "
+             "is off; expect about 3-5% of the panel width")
+
+    # Right of the hole and below it there must be panel, not bezel. Sample a
+    # band that starts one hole-width away, so the lens rim cannot be hit.
+    step = max(6, diameter // 3)
+    interior = 0
+    for y in (min(ys) + diameter // 2, max(ys)):
+        for x in (max(xs) + step, max(xs) + 2 * step):
+            if 0 <= x < width and 0 <= y < height:
+                i = x * 4
+                line = rows[y]
+                if (line[i] + line[i + 1] + line[i + 2]) / 3 >= 45:
+                    interior += 1
+    if interior < 2:
+        fail(f"the dark disc at {min(xs)},{min(ys)} is not on the panel: "
+             "there is no lighter screen beside it")
 
 
 
@@ -765,6 +790,42 @@ def check_editor() -> None:
     if "'/api/publish'" not in js:
         fail("editor/app.js must publish the map to the game on save, "
              "or Mode gameplay cannot show what was drawn")
+
+    # every tool is one square size: an icon on top, its label underneath. A
+    # button that grows with its label is what made the old bar uneven.
+    if "width: var(--btn)" not in css or "height: var(--btn)" not in css:
+        fail("editor/app.css: every .tool must be the same square (--btn)")
+    for part in (".tool .ico", ".tool .lbl"):
+        if part not in css:
+            fail(f"editor/app.css: {part} missing; the icon and its label are a fixed pair")
+
+    # the controls the bar is required to offer
+    for control, why in (
+        ('id="save"', "menyimpan peta"),
+        ('id="new"', "membuat peta baru"),
+        ('id="view-in"', "zoom masuk"),
+        ('id="view-out"', "zoom keluar"),
+    ):
+        if control not in html:
+            fail(f"editor/index.html: {control} is missing ({why})")
+
+    # half-step zoom, and the frame drawn over the map
+    if "0.5" not in js or "ZOOM_STEPS" not in js:
+        fail("editor/app.js: the zoom steps must include 0.5")
+    for needle in ("gameFrameRect", "drawGameFrame", "DEAD_ZONE"):
+        if needle not in js:
+            fail(f"editor/app.js: {needle} missing; the gameplay frame would not be drawn")
+
+    # the editor's idea of the gameplay viewport must match the app's
+    with open(os.path.join(ROOT, "app", "src", "main", "java", "dev", "retrobit",
+                          "pokelauncher", "game", "Input.kt"), encoding="utf-8") as handle:
+        kotlin = handle.read()
+    default_match = re.search(r"const val DEFAULT = (\d+)", kotlin)
+    game_zoom = re.search(r"const val GAME_ZOOM = (\d+)", js)
+    if default_match and game_zoom:
+        if int(default_match.group(1)) != int(game_zoom.group(1)):
+            fail(f"editor draws the gameplay frame at {game_zoom.group(1)}x but the app "
+                 f"opens at {default_match.group(1)}x")
 
 
 def check_game_assets() -> None:

@@ -1,16 +1,37 @@
 /* Johto map editor.
  *
- * The map is a grid of 16x16 cells. The canvas fills the whole window, so the
- * grid always covers the screen; the view scrolls with WASD, arrows, middle
- * drag or space drag. Cells outside the map are simply empty, which lets the
- * map grow as it is painted.
+ * The map is a grid of 16x16 cells. The canvas fills everything above the tool
+ * bar; the view scrolls with WASD, arrows, wheel, two-finger drag or alt drag,
+ * and zooms with the wheel, a pinch or the -/+/zoom buttons.
  *
- * Tools: pencil, eraser, picker, area fill. The + button opens the tileset.
+ * Tools: pencil, eraser, picker, area fill. The Tile button opens the tileset.
+ *
+ * The dashed frame drawn over the map is the gameplay viewport: the cells that
+ * `Mode gameplay` shows. It uses the same numbers as the game (zoom, 1/6 dead
+ * zone, camera clamped to the map), so the frame is a promise, not a guess.
  */
 'use strict';
 
 const TILE = 16;                 // one grid cell, in map pixels
-const ZOOM_STEPS = [0.5, 1, 2, 3, 4, 6];   // 1 = exactly 16x16 px per cell
+// 1 = exactly 16x16 px per cell. 0.5 is allowed (a cell becomes 8 px) because
+// seeing the whole 160x100 panel map is worth the half pixels; above 1 only
+// whole numbers, where snapping to whole pixels actually matters.
+const ZOOM_STEPS = [0.5, 1, 2, 3, 4, 6, 8];
+
+// The gameplay viewport, mirrored from the app. GameViewModel opens at
+// TouchInput.DEFAULT (10x) and CameraRig keeps a sixth of the view still on
+// each side; tools/verify.py checks these three numbers against the Kotlin.
+const PANEL_PX = { w: 2560, h: 1600 };
+const GAME_ZOOM = 10;
+const DEAD_ZONE = 1 / 6;
+
+// What one tablet screen shows, in cells. The game works in map pixels
+// (2560/10 = 256 px), but the editor draws in cells, so converting once here
+// keeps every use below in the same unit.
+const FRAME_MAP = {
+  w: PANEL_PX.w / GAME_ZOOM / TILE,     // 16 cells
+  h: PANEL_PX.h / GAME_ZOOM / TILE,     // 10 cells
+};
 // The map is exactly the tablet panel at 1:1: 2560x1600 / 16 = 160x100 cells.
 // That is why the grid "fills the screen": on the device it lines up pixel for
 // pixel, and in a smaller browser window it simply zooms out to fit.
@@ -40,12 +61,16 @@ const state = {
   brush: null,          // { name, layer, solid }
   tab: 'ground',
   hover: { x: 0, y: 0 },
-  loadedMap: false,     // a saved map wins over the seeded lawn
+  loadedMap: false,     // a saved map wins over the fresh sheet
   cols: DEFAULT_COLS,
   rows: DEFAULT_ROWS,
+  spawn: null,          // the cell the player starts on, saved with the map
   painting: false,
   panning: false,
   panFrom: null,
+  // pinch state: two pointers and the distance/centre they started with
+  pointers: new Map(),
+  pinch: null,
 };
 
 const key = (x, y) => x + ',' + y;
@@ -112,7 +137,90 @@ function draw() {
   }
 
   drawGrid(ctx, w, h, size, x0, y0, x1, y1);
+  drawGameFrame(ctx, size, w, h);
   drawCursor(ctx, size);
+}
+
+/**
+ * The gameplay viewport: the cells `Mode gameplay` shows.
+ *
+ * Where it sits comes from the same rule the game uses, not from centring the
+ * player on a screenshot:
+ *
+ *  - the camera is clamped to the map, so at the edges the frame stops at the
+ *    edge instead of running past it;
+ *  - if the map is smaller than the view, the whole map is centred;
+ *  - inside that, CameraRig keeps the player inside a dead zone of a sixth of
+ *    the view on each side, which is why the frame is drawn around the spawn
+ *    and not always exactly centred on it.
+ *
+ * The player is drawn at the spawn cell: that is where the game starts, so it
+ * is the one position the frame can be predicted for without running the game.
+ */
+function gameFrameRect() {
+  const size = cellSize();
+  // everything below is in screen pixels, so the frame scales with the zoom
+  // all in screen pixels: cells * size
+  const mapW = state.cols * size;
+  const mapH = state.rows * size;
+  const viewW = FRAME_MAP.w * size;
+  const viewH = FRAME_MAP.h * size;
+
+  const spawn = state.spawn || { x: Math.floor(state.cols / 2), y: Math.floor(state.rows / 2) };
+  const targetX = spawn.x * size;
+  const targetY = spawn.y * size;
+
+  const clamp = (value, view, map) => (map <= view ? (map - view) / 2
+    : Math.max(0, Math.min(map - view, value)));
+
+  let x = clamp(targetX - viewW / 2, viewW, mapW);
+  let y = clamp(targetY - viewH / 2, viewH, mapH);
+
+  // dead zone: the camera only moves once the player leaves the middle band
+  const dzx = viewW * DEAD_ZONE;
+  const dzy = viewH * DEAD_ZONE;
+  if (targetX > x + viewW - dzx) x = targetX - viewW + dzx;
+  if (targetX < x + dzx) x = targetX - dzx;
+  if (targetY > y + viewH - dzy) y = targetY - viewH + dzy;
+  if (targetY < y + dzy) y = targetY - dzy;
+  x = clamp(x, viewW, mapW);
+  y = clamp(y, viewH, mapH);
+
+  return { x, y, w: viewW, h: viewH, spawn, size };
+}
+
+function drawGameFrame(ctx, size, w, h) {
+  const frame = gameFrameRect();
+  const sx = frame.x - state.camera.x;
+  const sy = frame.y - state.camera.y;
+
+  ctx.save();
+  // Dim everything the game will not show. Reading the frame is easier when the
+  // inside is the only full-contrast part of the map.
+  ctx.fillStyle = 'rgba(20, 28, 14, .34)';
+  ctx.beginPath();
+  ctx.rect(0, 0, w, h);
+  ctx.rect(sx, sy, frame.w, frame.h);
+  ctx.fill('evenodd');
+
+  // the frame itself, plus corner ticks so it reads at any zoom
+  ctx.strokeStyle = 'rgba(251, 243, 220, .95)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(sx + 1, sy + 1, frame.w - 2, frame.h - 2);
+  ctx.strokeStyle = 'rgba(59, 47, 30, .9)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(sx + .5, sy + .5, frame.w - 1, frame.h - 1);
+
+  // the player, at the spawn cell, inside the frame
+  const px = frame.spawn.x * size - state.camera.x;
+  const py = frame.spawn.y * size - state.camera.y;
+  ctx.fillStyle = 'rgba(197, 58, 45, .95)';
+  ctx.fillRect(px + size * 0.25, py + size * 0.25, size * 0.5, size * 0.5);
+  ctx.strokeStyle = 'rgba(251, 243, 220, .95)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(px + size * 0.25 + .5, py + size * 0.25 + .5, size * 0.5 - 1, size * 0.5 - 1);
+
+  ctx.restore();
 }
 
 function drawTile(ctx, name, px, py, size) {
@@ -259,7 +367,22 @@ function buildTabs() {
 function buildPalette() {
   const palette = $('palette');
   palette.innerHTML = '';
-  for (const [name, tile] of tilesOfTab()) {
+
+  const entries = tilesOfTab();
+  if (!entries.length) {
+    // No tiles yet is a legitimate state: the world is being rebuilt from
+    // scratch. Say what to do instead of showing an empty white panel.
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = state.atlas
+      ? 'Belum ada tile di lapisan ini. Tambahkan lewat tools/tileset/build.py, '
+        + 'lalu muat ulang halaman.'
+      : 'Atlas tileset belum termuat.';
+    palette.appendChild(empty);
+    return;
+  }
+
+  for (const [name, tile] of entries) {
     const cell = document.createElement('button');
     cell.className = 'cell';
     cell.type = 'button';
@@ -312,10 +435,38 @@ const TOOL_LABEL = { pencil: 'Pensil', erase: 'Hapus', pick: 'Ambil', fill: 'Isi
 function updateHud() {
   $('hud-tool').textContent = TOOL_LABEL[state.tool] + (state.brush ? ` · ${state.brush.name}` : '');
   $('hud-cell').textContent = `${state.hover.x}, ${state.hover.y}`;
-  $('hud-size').textContent = `${state.cells.size} sel · ${cellSize()}×${cellSize()} px · zoom ${state.zoom}x`;
+  $('hud-size').textContent =
+    `${state.cols}×${state.rows} sel · ${state.cells.size} terpakai · ${cellSize()} px`;
+  $('hud-frame').textContent = `bingkai ${FRAME_MAP.w}×${FRAME_MAP.h} sel`;
+  $('zoom-value').textContent = `${state.zoom}×`;
   for (const id of ['pencil', 'erase', 'pick', 'fill']) {
-    $('tool-' + id).classList.toggle('active', state.tool === id);
+    const button = $('tool-' + id);
+    const on = state.tool === id;
+    button.classList.toggle('active', on);
+    // aria-pressed, so the active tool is not conveyed by colour alone
+    button.setAttribute('aria-pressed', String(on));
   }
+}
+
+/** Steps the zoom by one and keeps the point under (atX, atY) fixed. */
+function zoomTo(step, atX, atY) {
+  const next = ZOOM_STEPS[Math.max(0, Math.min(ZOOM_STEPS.length - 1, step))];
+  if (next === state.zoom) return false;
+  const cx = atX === undefined ? window.innerWidth / 2 : atX;
+  const cy = atY === undefined ? window.innerHeight / 2 : atY;
+  const before = screenToCell(cx, cy);
+  state.zoom = next;
+  state.camera.x = before.x * cellSize() - cx;
+  state.camera.y = before.y * cellSize() - cy;
+  return true;
+}
+
+function zoomIn(atX, atY) {
+  return zoomTo(ZOOM_STEPS.indexOf(state.zoom) + 1, atX, atY);
+}
+
+function zoomOut(atX, atY) {
+  return zoomTo(ZOOM_STEPS.indexOf(state.zoom) - 1, atX, atY);
 }
 
 function setTool(tool) {
@@ -411,13 +562,54 @@ async function loadMap() {
   }
 }
 
+/**
+ * A blank sheet: no cells at all, and no seeded lawn.
+ *
+ * It used to fill the map with grass on first run. That hid a real question
+ * ("what is the world made of?") behind a default nobody chose, and it made an
+ * empty map impossible to author on purpose.
+ */
 function seedIfEmpty() {
-  if (state.cells.size || state.loadedMap) return;
-  for (let y = 0; y < state.rows; y++) {
-    for (let x = 0; x < state.cols; x++) {
-      state.cells.set(layerKey(x, y, 'ground'), { name: 'grass', layer: 'ground', solid: false });
-    }
+  state.cells.clear();
+  state.spawn = null;
+}
+
+/**
+ * Starts a new, empty map at a chosen size.
+ *
+ * Size is asked for rather than guessed: a map that is too small to hold the
+ * gameplay frame (16x10 cells) cannot be explored, and that is worth saying out
+ * loud instead of letting the paint tools silently refuse.
+ */
+function newMap() {
+  const minCols = FRAME_MAP.w;
+  const minRows = FRAME_MAP.h;
+  const colsText = window.prompt('Lebar peta (sel, 16 px per sel):', String(state.cols));
+  if (colsText === null) return;
+  const rowsText = window.prompt('Tinggi peta (sel):', String(state.rows));
+  if (rowsText === null) return;
+
+  const cols = Math.round(Number(colsText));
+  const rows = Math.round(Number(rowsText));
+  if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols < 1 || rows < 1) {
+    toast('Ukuran tidak valid');
+    return;
   }
+  if (cols < minCols || rows < minRows) {
+    toast(`Terlalu kecil: minimal ${minCols}x${minRows} sel agar bingkai gameplay muat`);
+    return;
+  }
+  if (state.cells.size && !window.confirm('Buang semua sel dan mulai peta baru?')) return;
+
+  state.cols = cols;
+  state.rows = rows;
+  state.cells.clear();
+  state.spawn = { x: Math.floor(cols / 2), y: Math.floor(rows / 2) };
+  state.loadedMap = true;      // a deliberate blank map must not be re-seeded
+  fitToScreen();
+  draw();
+  updateHud();
+  toast(`Peta baru ${cols}x${rows} sel — kosong`);
 }
 
 /** True when the cell is on the map; painting outside it is a no-op. */
@@ -462,10 +654,63 @@ function zoomToActual() {
   state.camera.y = 0;
 }
 
+/** Distance and centre of the two pointers currently on the canvas. */
+function pinchInfo() {
+  const points = Array.from(state.pointers.values());
+  if (points.length < 2) return null;
+  const [a, b] = points;
+  return {
+    distance: Math.hypot(a.x - b.x, a.y - b.y),
+    cx: (a.x + b.x) / 2,
+    cy: (a.y + b.y) / 2,
+  };
+}
+
 function bindCanvas() {
   const canvas = $('map');
 
   canvas.addEventListener('pointermove', (event) => {
+    if (state.pointers.has(event.pointerId)) {
+      state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    }
+
+    // Two fingers: pan with the midpoint, zoom with the distance between them.
+    // Handled before painting, and painting is cancelled while it runs, so a
+    // pinch never leaves a trail of painted cells behind it.
+    if (state.pointers.size >= 2) {
+      const now = pinchInfo();
+      if (state.pinch && now) {
+        const { start } = state.pinch;
+        if (start.distance > 0) {
+          const scale = now.distance / start.distance;
+          const wanted = start.zoom * scale;
+          // Pick the step nearest the gesture, so a slow pinch does not jump
+          // through every step in the list.
+          let best = state.zoom;
+          let bestGap = Infinity;
+          for (const step of ZOOM_STEPS) {
+            const gap = Math.abs(step - wanted);
+            if (gap < bestGap) { bestGap = gap; best = step; }
+          }
+          if (best !== state.zoom) {
+            const cell = screenToCell(now.cx, now.cy);
+            state.zoom = best;
+            state.camera.x = cell.x * cellSize() - now.cx;
+            state.camera.y = cell.y * cellSize() - now.cy;
+          }
+        }
+        // the midpoint drag pans, exactly like a two-finger swipe
+        state.camera.x = state.pinch.startCamera.x
+          - (now.cx - start.cx) * (cellSize() / state.pinch.startCell);
+        state.camera.y = state.pinch.startCamera.y
+          - (now.cy - start.cy) * (cellSize() / state.pinch.startCell);
+      }
+      state.painting = false;
+      draw();
+      updateHud();
+      return;
+    }
+
     if (state.panning && state.panFrom) {
       state.camera.x = state.panFrom.cx - (event.clientX - state.panFrom.x);
       state.camera.y = state.panFrom.cy - (event.clientY - state.panFrom.y);
@@ -483,6 +728,21 @@ function bindCanvas() {
 
   canvas.addEventListener('pointerdown', (event) => {
     canvas.setPointerCapture(event.pointerId);
+    state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    // A second finger turns whatever was happening into a pinch: stop painting
+    // first, or the first finger's press would keep drawing while zooming.
+    if (state.pointers.size === 2) {
+      state.painting = false;
+      const now = pinchInfo();
+      state.pinch = {
+        start: { ...now, zoom: state.zoom },
+        startCamera: { x: state.camera.x, y: state.camera.y },
+        startCell: state.zoom,
+      };
+      return;
+    }
+    if (state.pointers.size > 2) return;
 
     // middle mouse, or space held, pans the map
     if (event.button === 1 || event.button === 2 || event.altKey) {
@@ -507,7 +767,10 @@ function bindCanvas() {
     updateHud();
   });
 
-  const stop = () => {
+  const stop = (event) => {
+    if (event && event.pointerId !== undefined) state.pointers.delete(event.pointerId);
+    else state.pointers.clear();
+    if (state.pointers.size < 2) state.pinch = null;
     state.painting = false;
     state.panning = false;
     state.panFrom = null;
@@ -520,19 +783,14 @@ function bindCanvas() {
   // right click never opens a menu: it is a pan gesture here
   canvas.addEventListener('contextmenu', (event) => event.preventDefault());
 
-  // zoom with the wheel, anchored at the cursor
+  // zoom with the wheel, anchored at the cursor. ctrl+wheel is the trackpad
+  // pinch gesture, which browsers report as a wheel event.
   canvas.addEventListener('wheel', (event) => {
     event.preventDefault();
-    const before = screenToCell(event.clientX, event.clientY);
-    const index = ZOOM_STEPS.indexOf(state.zoom);
-    const next = ZOOM_STEPS[Math.min(ZOOM_STEPS.length - 1,
-      Math.max(0, index + (event.deltaY < 0 ? 1 : -1)))];
-    if (next === state.zoom) return;
-    state.zoom = next;
-    state.camera.x = before.x * cellSize() - event.clientX;
-    state.camera.y = before.y * cellSize() - event.clientY;
-    draw();
-    updateHud();
+    const changed = event.deltaY < 0
+      ? zoomIn(event.clientX, event.clientY)
+      : zoomOut(event.clientX, event.clientY);
+    if (changed) { draw(); updateHud(); }
   }, { passive: false });
 }
 
@@ -546,9 +804,13 @@ function bindKeys() {
     if (k === 'e') { setTool('erase'); return; }
     if (k === 'i') { setTool('pick'); return; }
     if (k === 'g') { setTool('fill'); return; }
-    if (k === '+') { toggleDrawer(); return; }
     if (k === 'f') { fitToScreen(); draw(); updateHud(); return; }
     if (k === '1') { zoomToActual(); draw(); updateHud(); return; }
+    if (k === 'n') { newMap(); return; }
+    // + and - already work on most layouts; the zoom buttons carry the same
+    // actions for touch, where there is no keyboard at all.
+    if (k === '=' || k === '+') { if (zoomIn()) { draw(); updateHud(); } return; }
+    if (k === '-' || k === '_') { if (zoomOut()) { draw(); updateHud(); } return; }
     if (k === 's') {
       // Plain "s" as well as ctrl+s: the bar has a visible Simpan button, and a
       // button you can see should have a key you can press.
@@ -577,8 +839,11 @@ function bindChrome() {
   $('add').addEventListener('click', () => toggleDrawer());
   $('close').addEventListener('click', () => toggleDrawer(false));
   $('save').addEventListener('click', () => save());
+  $('new').addEventListener('click', () => newMap());
+  $('view-in').addEventListener('click', () => { if (zoomIn()) { draw(); updateHud(); } });
+  $('view-out').addEventListener('click', () => { if (zoomOut()) { draw(); updateHud(); } });
+  $('view-zoom').addEventListener('click', () => { zoomToActual(); draw(); updateHud(); });
   $('view-fit').addEventListener('click', () => { fitToScreen(); draw(); updateHud(); });
-  $('view-1x').addEventListener('click', () => { zoomToActual(); draw(); updateHud(); });
 
   window.addEventListener('resize', () => { draw(); updateHud(); });
   window.addEventListener('beforeunload', () => { /* no silent writes */ });

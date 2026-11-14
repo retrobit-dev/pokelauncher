@@ -309,12 +309,14 @@ python3 tools/preview_server.py --port 9000
 
 Server hanya menyajikan rute di atas; sisa repo tidak bisa diakses.
 
-**Dua mode, tombolnya di atas tablet.** Halaman `/` punya dua tombol di atas perangkat:
+**Dua mode, tombolnya di atas tablet.** Halaman `/` punya dua tombol ikon di atas perangkat, tanpa
+tulisan supaya barisnya tetap pendek; namanya ada di `aria-label`/`title` sehingga pembaca layar
+tetap menyebutkannya:
 
 | Tombol | Isi |
 | --- | --- |
-| **Mode gameplay** | Render tablet seperti di atas (default). |
-| **Mode map editor** | Editor peta memenuhi layar, siap dipakai. |
+| 🎮 | Mode gameplay: render tablet seperti di atas (default). |
+| 🗺 | Mode map editor: editor peta memenuhi layar, siap dipakai. |
 
 Pilihannya disimpan di URL (`/?mode=editor`), jadi tautan atau muat ulang tetap membuka mode yang
 sama. Editor juga tetap bisa dibuka langsung di `/editor`.
@@ -325,9 +327,34 @@ menulis dokumen kerja `docs/tileset/map.json` (tidak masuk git) dan menerbitkann
 di Mode gameplay. Render tablet dibuat ulang di latar belakang saat peta berubah — sekitar 45 detik,
 karena itu tab menampilkan status *Menyiapkan tampilan dari peta editor…* alih-alih diam saja.
 
-**Alat editor ada di bawah peta.** Seluruh tombol editor (pensil, hapus, ambil, isi, simpan, muat
-peta, 1:1, `+` tileset) berada di bar yang menempel di tepi bawah, bukan melayang di atas kanvas.
-Kanvas peta tingginya `100% - --bar-h`, jadi tidak ada tombol yang menutupi area menggambar.
+**Alat editor ada di bawah peta.** Seluruh tombol editor berada di bar yang menempel di tepi bawah,
+bukan melayang di atas kanvas. Kanvas peta tingginya `100% - --bar-h`, jadi tidak ada tombol yang
+menutupi area menggambar.
+
+Setiap tombol adalah **persegi berukuran sama** (`--btn`, default 56 px): ikon 22 px di atas, label
+kecil di baris bawahnya. Tombol yang ikut melebar mengikuti panjang labelnya dulu membuat bar
+terlihat compang-camping; sekarang lebarnya tetap dan `verify.py` menjaganya. Isi bar, dari kiri:
+pensil/hapus/ambil/isi · perkecil, zoom, perbesar, muat · simpan, baru · tambah tile.
+HUD (alat aktif, sel kursor, ukuran peta, bingkai gameplay) menempel di ujung kanan bar yang sama.
+
+Ukuran bar diatur dari dua variabel di `editor/app.css`: `--bar-h` (tinggi bar) dan `--btn` (sisi
+tombol). Mengubah `--btn` mengecilkan seluruh tombol sekaligus tanpa menyentuh markup.
+
+**Zoom editor 0.5× lalu bilangan bulat.** Langkahnya `0.5, 1, 2, 3, 4, 6, 8`. Di bawah 1× sel
+menjadi 8 px sehingga seluruh peta muat di layar; di atas 1× hanya bilangan bulat, supaya tepi tile
+tetap tajam dan tidak jatuh di antara piksel. Klik angka zoom untuk kembali ke 1×, `F` untuk
+memuat seluruh peta.
+
+**Bingkai gameplay di kanvas.** Editor menggambar bingkai tipis 16×10 sel — persis yang ditampilkan
+Mode gameplay pada zoom 10× di panel 2560×1600 — plus area di luarnya diredupkan dan penanda spawn.
+Jadi sebelum menyimpan kamu sudah tahu bagian mana yang akan terlihat di game. Angka ini dihitung
+dari `PANEL_PX / GAME_ZOOM / TILE`, dan `verify.py` mencocokkannya dengan `DEFAULT` di `Input.kt`
+supaya bingkai dan game tidak pernah berbeda pendapat.
+
+**Peta bawaan sengaja kosong.** `map.json` berisi 0 sel (80×50, spawn di 39,33) supaya peta bisa
+digambar ulang dari nol. Gameplay dan render tablet akan tampak kosong sampai kamu menggambar.
+Tombol **Baru** (`N`) membuat peta kosong baru dengan ukuran pilihanmu (minimal 16×10 sel, yaitu
+sebesar bingkai gameplay).
 
 **Layar berisi lapangan.** `python3 tools/mock_ingame.py --field` menggambar peta + pemain tanpa
 HUD (itu yang dipasang ke panel), lalu `python3 tools/render_tablet.py` membingkainya.

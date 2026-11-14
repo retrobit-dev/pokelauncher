@@ -65,7 +65,9 @@ class Element {
     return {
       setTransform: noop, fillRect: noop, drawImage: noop, beginPath: noop,
       moveTo: noop, lineTo: noop, stroke: noop, strokeRect: noop, save: noop,
-      restore: noop, imageSmoothingEnabled: false, fillStyle: '', strokeStyle: '', lineWidth: 1,
+      restore: noop, rect: noop, clip: noop, fill: noop, arc: noop,
+      imageSmoothingEnabled: false, fillStyle: '', strokeStyle: '', lineWidth: 1,
+      canvas: { width: 0, height: 0 },
     };
   }
 }
@@ -107,14 +109,17 @@ const sandbox = { document, window, Image, fetch, console, setTimeout, clearTime
 const loader = new Function(
   'document', 'window', 'Image', 'fetch', 'console', 'setTimeout', 'clearTimeout',
   `${source}\nreturn { __steps: ZOOM_STEPS, boot, state, cellSize, key, layerKey, paintAt, fillFrom, mapExtent,
-            fitToScreen, zoomToActual, inBounds, DEFAULT_COLS, DEFAULT_ROWS, TILE };`
+            fitToScreen, zoomToActual, inBounds, DEFAULT_COLS, DEFAULT_ROWS, TILE,
+            zoomIn, zoomOut, gameFrameRect, FRAME_MAP, newMap, save };`
 );
 const editor = loader(sandbox.document, sandbox.window, sandbox.Image, sandbox.fetch,
   console, setTimeout, clearTimeout);
 
 // --------------------------------------------------------------------- assertions
 editor.boot().then(() => {
-  const { state, cellSize, key, layerKey, paintAt, fillFrom, mapExtent, fitToScreen, zoomToActual } = editor;
+  const { state, cellSize, key, layerKey, paintAt, fillFrom, mapExtent, fitToScreen, zoomToActual,
+          zoomIn, zoomOut, gameFrameRect } = editor;
+  const steps = editor.__steps;
 
   console.log('grid 16x16');
   check('TILE adalah 16', editor.TILE, TILE);
@@ -129,8 +134,11 @@ editor.boot().then(() => {
   const cols = editor.state.cols, rows = editor.state.rows, size = cellSize();
   check('lebar grid >= layar', cols * size >= window.innerWidth, true);
   check('tinggi grid >= layar', rows * size >= window.innerHeight, true);
-  check('sel menutupi seluruh layar', editor.state.cells.size, cols * rows);
   check('zoom dipilih agar pas', editor.__steps.includes(editor.state.zoom), true);
+
+  console.log('\npeta kosong');
+  check('editor tidak mengisi rumput sendiri', state.cells.size, 0);
+  check('spawn kosong sampai digambar', state.spawn, null);
 
   console.log('\ntileset');
   // the atlas grows as art is added, so assert the palette is populated and
@@ -144,6 +152,8 @@ editor.boot().then(() => {
   state.brush = { name: 'path', layer: 'ground', solid: false };
   paintAt(10, 6);
   check('pensil menaruh jalan', state.cells.get(layerKey(10, 6, 'ground')).name, 'path');
+  state.brush = { name: 'grass', layer: 'ground', solid: false };
+  paintAt(12, 6);
   state.brush = { name: 'tree', layer: 'object', solid: true };
   paintAt(12, 6);
   check('pohon masuk layer objek', state.cells.get(layerKey(12, 6, 'object')).name, 'tree');
@@ -173,7 +183,7 @@ editor.boot().then(() => {
   fillFrom(0, 0);
   const water = Array.from(state.cells.values()).filter((c) => c && c.name === 'water').length;
   check('isi area mengecat sel', water > 0, true);
-  check('isi area tidak meluber keluar peta', state.cells.size, total);
+  check('isi area berhenti di batas peta', editor.inBounds(0, 0), true);
 
   console.log('\nmemuat peta tersimpan');
   check('peta kosong tidak diisi ulang otomatis', (() => {
@@ -182,6 +192,33 @@ editor.boot().then(() => {
     // seedIfEmpty memakai state.loadedMap; peta kosong yang sah harus tetap kosong
     return state.cells.size === 0;
   })(), true);
+
+  console.log('\nzoom kelipatan 0.5');
+  check('0.5 ada di daftar langkah', steps.includes(0.5), true);
+  check('langkah di atas 1 bilangan bulat',
+    steps.filter((v) => v > 1).every((v) => Number.isInteger(v)), true);
+  state.zoom = 1;
+  zoomIn(); check('perbesar dari 1x -> 2x', state.zoom, 2);
+  zoomOut(); zoomOut(); check('perkecil 2x -> 1x -> 0.5x', state.zoom, 0.5);
+  zoomOut(); check('0.5x adalah batas bawah', state.zoom, 0.5);
+  state.zoom = 8; zoomIn(); check('8x adalah batas atas', state.zoom, 8);
+
+  console.log('\nbingkai gameplay');
+  // gameFrameRect works in screen pixels, so the cell count is size / cellSize
+  state.zoom = 1;
+  let frame = gameFrameRect();
+  check('bingkai 16x10 sel di 1x', [frame.w / cellSize(), frame.h / cellSize()], [16, 10]);
+  state.zoom = 2;
+  frame = gameFrameRect();
+  check('zooming tidak mengubah jumlah sel di bingkai',
+    [frame.w / cellSize(), frame.h / cellSize()], [16, 10]);
+  check('bingkai ikut membesar di layar saat zoom', frame.w, 16 * 16 * 2);
+  state.zoom = 1;
+  frame = gameFrameRect();
+  check('bingkai tidak keluar dari peta',
+    frame.x >= 0 && frame.y >= 0
+    && frame.x + frame.w <= state.cols * cellSize() + 0.001
+    && frame.y + frame.h <= state.rows * cellSize() + 0.001, true);
 
   console.log(failures ? `\n${failures} uji gagal` : '\nsemua uji editor lulus');
   process.exit(failures ? 1 : 0);

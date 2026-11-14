@@ -9,6 +9,19 @@ let bad = 0;
 function fail(m) { console.log('  FAIL', m); bad++; }
 function ok(m) { console.log('  ok  ', m); }
 
+/*
+ * An empty map is a legitimate state, not a broken one.
+ *
+ * The world is being rebuilt from scratch, so `cells` is empty on purpose. The
+ * checks below would otherwise call that "spawn tertutup" and fail a file that
+ * is exactly what was asked for. What must still hold is the shape of the file:
+ * a size big enough to hold the gameplay frame, a spawn inside it, and no
+ * reference to a tile that does not exist.
+ */
+const cellCount = Object.keys(map.cells).length;
+const empty = cellCount === 0;
+if (empty) console.log('  --   peta kosong: dilewati cek isi, dicek bentuknya saja');
+
 // names of every layer must exist in the atlas
 const unknown = new Set();
 const names = [];
@@ -32,6 +45,20 @@ stray ? fail(stray + ' sel punya lapisan tak dikenal') : ok('lapisan hanya groun
 
 // spawn must be standable: on the map, ground present, nothing solid there
 const key = (x, y) => x + ',' + y;
+if (empty) {
+  const sp0 = map.spawn || {};
+  const inside = Number.isInteger(sp0.x) && Number.isInteger(sp0.y)
+    && sp0.x >= 0 && sp0.y >= 0 && sp0.x < map.cols && sp0.y < map.rows;
+  inside ? ok(`spawn (${sp0.x},${sp0.y}) di dalam peta kosong`)
+    : fail('spawn harus berupa sel di dalam peta');
+  // a map smaller than one gameplay frame cannot be explored at all
+  const frameCols = 16, frameRows = 10;   // 2560/16/10 x 1600/16/10
+  (map.cols >= frameCols && map.rows >= frameRows)
+    ? ok(`peta ${map.cols}x${map.rows} memuat bingkai ${frameCols}x${frameRows}`)
+    : fail(`peta ${map.cols}x${map.rows} lebih kecil dari bingkai gameplay`);
+  console.log(bad ? `\n${bad} masalah` : '\npeta kosong valid');
+  process.exit(bad ? 1 : 0);
+}
 function solidAt(x, y) {
   const c = map.cells[key(x, y)];
   if (!c) return true;
