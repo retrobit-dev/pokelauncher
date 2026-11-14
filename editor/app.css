@@ -1,10 +1,12 @@
 /* Johto map editor.
  *
  * The map is a grid of 16x16 cells. The canvas fills everything above the tool
- * bar; the view scrolls with WASD, arrows, wheel, two-finger pan or space drag,
- * and zooms with the wheel, pinch or the -/+/1x buttons.
+ * bar; the view moves with the Geser tool (or a middle/right drag, or the arrow
+ * keys) and scales with the -/+/zoom buttons or the wheel. There is no pinch
+ * and no two-finger pan: see app.js for why moving the map became a tool.
  *
- * Tools: pencil, eraser, picker, area fill. The Tile button opens the tileset.
+ * Tools: pencil, eraser, picker, area fill, move, with undo/redo and a brush
+ * size. The Tile button opens the tileset.
  *
  * One thing here is not a drawing aid: the gameplay frame. It marks the cells
  * that `Mode gameplay` will show, using the same zoom and dead-zone rule as
@@ -20,10 +22,14 @@
   --green: #6ba05a;
   --shadow: 0 8px 22px rgba(59, 47, 30, .22);
   --radius: 14px;
-  /* the bar's height: the map and the drawer both clear it */
-  --bar-h: 76px;
-  /* one size for every tool button, icon and label included */
-  --btn: 56px;
+  /* Two columns, two rows each, so the bar is two buttons tall:
+     2 * 38 + 1 * 6 (gap) + 2 * 7 (padding) + 2 (border) = 98px. */
+  --btn: 38px;
+  --row-gap: 6px;
+  --tool-rows: 2;
+  --bar-pad: 7px;
+  --bar-h: calc(var(--tool-rows) * var(--btn) + (var(--tool-rows) - 1) * var(--row-gap)
+                + 2 * var(--bar-pad) + 2px);
 }
 
 * { box-sizing: border-box; }
@@ -50,13 +56,17 @@ html, body {
   width: 100%;
   height: calc(100% - var(--bar-h));
   display: block;
-  touch-action: none;          /* pinch and two-finger pan are handled here */
+  /* The map is dragged with the Geser tool, not with the browser's own scroll
+     or pinch: touch-action none stops the page from zooming under a stroke. */
+  touch-action: none;
   cursor: crosshair;
   image-rendering: pixelated;
 }
 
 /* ------------------------------------------------------------ tools
-   A bar pinned to the bottom edge, full width, above nothing. */
+   A stack of rows pinned to the bottom edge, one row per kind of job. Rows keep
+   related buttons together; a single wrapping row made every control look
+   equally related to every other, which is how the bar became unreadable. */
 #tools {
   position: fixed;
   left: 0;
@@ -64,15 +74,39 @@ html, body {
   bottom: 0;
   height: var(--bar-h);
   display: flex;
-  gap: 6px;
-  align-items: center;
-  padding: 0 10px;
+  align-items: flex-end;
+  gap: 24px;
+  padding: var(--bar-pad);
   background: var(--paper);
   border-top: 2px solid var(--ink);
   box-shadow: 0 -4px 16px rgba(59, 47, 30, .16);
   z-index: 5;
-  overflow-x: auto;
-  scrollbar-width: thin;
+}
+
+/* Two columns: the tools that change the map on the left, the view and the file
+   on the right. Each column stacks its own rows. */
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--row-gap);
+}
+.col-view { margin-left: auto; }   /* the right-hand column hugs the far edge */
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--btn);
+}
+
+/* the little caption that names a row, e.g. "Kuas" */
+.rowlabel {
+  flex: 0 0 auto;
+  padding: 0 6px 0 2px;
+  font-size: 9px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
 }
 
 /*
@@ -87,42 +121,72 @@ html, body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 0;
   padding: 0;
   border: 2px solid var(--ink);
-  border-radius: 12px;
+  border-radius: 8px;
   background: var(--paper);
   color: var(--ink);
   cursor: pointer;
   font: inherit;
-  box-shadow: var(--shadow);
+  box-shadow: 0 2px 6px rgba(59, 47, 30, .16);
   transition: transform .08s ease, background .12s ease;
 }
 .tool:hover { background: var(--paper-deep); }
 .tool:active { transform: translateY(1px); }
+.tool:disabled {
+  opacity: .38;
+  cursor: default;
+  box-shadow: none;
+}
+.tool:disabled:hover { background: var(--paper); }
 .tool.active {
   background: var(--gold);
-  box-shadow: 0 0 0 3px rgba(224, 184, 76, .35), var(--shadow);
+  box-shadow: 0 0 0 2px rgba(224, 184, 76, .45), 0 2px 6px rgba(59, 47, 30, .18);
 }
 .tool .ico {
-  font-size: 20px;
+  font-size: 14px;
   line-height: 1;
   /* every glyph is centred in the same box, so mixed fonts still line up */
-  width: 22px;
-  height: 22px;
+  width: 16px;
+  height: 16px;
   display: grid;
   place-items: center;
 }
 .tool .lbl {
-  font-size: 9px;
+  font-size: 7px;
   line-height: 1;
-  letter-spacing: .02em;
+  letter-spacing: .01em;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.tool.zoom .ico { font-size: 13px; font-weight: 700; }
+.tool.zoom .ico { font-size: 10px; font-weight: 700; }
+
+/* the two brush-size buttons: square, no label, so the number between them is
+   the only thing that changes width */
+.tool.mini {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+}
+.tool.mini .ico { font-size: 13px; width: 14px; height: 14px; }
+
+/* the brush size readout, between - and + */
+.readout {
+  flex: 0 0 auto;
+  min-width: 28px;
+  padding: 2px 5px;
+  border: 2px solid var(--ink-soft);
+  border-radius: 8px;
+  background: #fff;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 .tool.save { background: var(--gold); }
 .tool.save:hover { background: #eecb68; }
 .tool.new { background: var(--paper-deep); }
@@ -133,24 +197,27 @@ html, body {
 .divider {
   flex: 0 0 auto;
   width: 2px;
-  height: 34px;
+  height: calc(var(--btn) - 12px);
   background: rgba(59, 47, 30, .25);
   margin: 0 2px;
 }
 
 /* ------------------------------------------------------------ hud
-   Status lives inside the bar, at the right end, so it never sits on the
-   drawing area. */
+   Status sits between the two columns, on one line, so it never covers the
+   drawing area and never competes with the buttons. */
 #hud {
-  margin-left: auto;
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--paper) 88%, transparent);
-  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 1px;
+  padding: 0 2px;
+  font-size: 9px;
   color: var(--ink-soft);
   pointer-events: none;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 #hud .sep { opacity: .45; margin: 0 4px; }
 #hud-tool { color: var(--ink); font-weight: 700; }
@@ -290,8 +357,11 @@ html, body {
 }
 
 /* narrow screens: the drawer covers the map instead of squeezing beside it */
-@media (max-width: 620px) {
-  :root { --bar-h: 68px; --btn: 50px; }
+@media (max-width: 760px) {
+  /* The two columns need about 700px. On a phone the bar would push the map
+     off the screen, so the HUD goes and the columns close up. */
+  :root { --btn: 34px; }
+  #tools { gap: 10px; }
   #drawer { left: 12px; width: auto; }
   #hud { display: none; }
 }

@@ -777,6 +777,8 @@ def check_editor() -> None:
         fail("editor/app.css must pin the map canvas")
     if "bottom: var(--bar-h)" not in css:
         fail("editor/app.css: the map must stop above the tool bar (--bar-h)")
+    if "--bar-h:" not in css:
+        fail("editor/app.css: --bar-h must be declared (it is computed from --btn now)")
     if "bottom: 0;" not in css:
         fail("editor/app.css: the tool bar must sit at the bottom edge")
 
@@ -805,9 +807,76 @@ def check_editor() -> None:
         ('id="new"', "membuat peta baru"),
         ('id="view-in"', "zoom masuk"),
         ('id="view-out"', "zoom keluar"),
+        ('id="tool-move"', "menggeser peta"),
+        ('id="undo"', "membatalkan"),
+        ('id="redo"', "mengulangi"),
+        ('id="size-up"', "membesarkan kuas"),
+        ('id="size-down"', "mengecilkan kuas"),
+        ('id="size-value"', "menampilkan ukuran kuas"),
     ):
         if control not in html:
             fail(f"editor/index.html: {control} is missing ({why})")
+
+    # The bar is one row per kind of job. A single wrapping row is what made
+    # the old bar unreadable: every button looked equally related to every
+    # other. Each row must be its own group with a name.
+    rows = re.findall(r'<div class="row" role="group" aria-label="([^"]+)">', html)
+    if len(rows) < 4:
+        fail(f"editor/index.html: the bar needs a row per job, found {len(rows)}")
+    elif len(set(rows)) != len(rows):
+        fail("editor/index.html: two tool rows share a name")
+
+    # two columns: the map tools on the left, the view and file on the right
+    for column in ("col-tools", "col-view"):
+        if f'class="col {column}"' not in html:
+            fail(f"editor/index.html: missing the {column} column")
+    tools_col = re.search(r'class="col col-tools">(.*?)class="col col-view"', html, re.S)
+    if tools_col:
+        if 'id="tool-move"' in tools_col.group(1):
+            fail("editor/index.html: Geser belongs in the view column, not with the paint tools")
+    if ".col-view { margin-left: auto; }" not in css:
+        fail("editor/app.css: the right-hand column must hug the far edge")
+
+    # moving the map is a tool now, and pinch/two-finger pan must be gone: the
+    # gesture and the stroke could not share one finger, and a stray second
+    # touch zoomed the map out mid-draw.
+    # Substring checks are not enough here: "function undoGone" contains
+    # "function undo", so a renamed function still passed. Every check below is
+    # a word-boundary regex, and the ones that matter are anchored to behaviour.
+    # strip comments first: the header explains why pinch is gone, and that
+    # sentence must not count as pinch code coming back
+    code = re.sub(r"/\*.*?\*/", "", js, flags=re.S)
+    code = re.sub(r"(?m)//.*$", "", code)
+    if re.search(r"\bpinch\b|state\.pointers|pinchInfo", code):
+        fail("editor/app.js: pinch / two-finger pan must be removed; "
+             "the Geser tool is the only way to move the map")
+    # the move tool has to be wired to the button and actually pan
+    if not re.search(r"\$\('tool-move'\)\.addEventListener", js):
+        fail("editor/app.js: the Geser button is not wired to anything")
+    if not re.search(r"state\.panning\s*=\s*true", js):
+        fail("editor/app.js: the Geser tool must actually pan the map")
+
+    # undo/redo must be real history, not two decorative buttons
+    for fn in ("undo", "redo", "remember", "beginStroke", "endStroke"):
+        if not re.search(r"\nfunction %s\s*\(" % fn, js):
+            fail(f"editor/app.js: function {fn} is missing; undo/redo would be decoration")
+
+    # brush size drives the footprint, and the footprint is what gets painted
+    if not re.search(r"\nfunction brushCells\s*\(", js) or "state.brushSize" not in js:
+        fail("editor/app.js: brush size must change how many cells a stroke touches")
+    if not re.search(r"\nfunction paintCell\s*\(", js):
+        fail("editor/app.js: painting needs a per-cell primitive that respects the brush")
+    if "BRUSH_SIZES" not in js:
+        fail("editor/app.js: brush sizes must be a declared list")
+
+    # smaller buttons: the bar is four rows, so a 56px button would eat a fifth
+    # of a 1600px panel. Keep it at 48 or below.
+    sizes = re.findall(r"--btn:\s*(\d+)px", css)
+    if not sizes:
+        fail("editor/app.css: --btn must set the button size")
+    elif int(sizes[0]) > 40:
+        fail(f"editor/app.css: --btn is {sizes[0]}px; the bar should stay small "
+             "enough to leave the map room")
 
     # half-step zoom: read the array itself. Searching the file for "0.5" was
     # useless - the number appears in a dozen unrelated places - so a steps

@@ -98,6 +98,7 @@ const fetch = async (url) => {
     return { ok: true, json: async () => JSON.parse(fs.readFileSync(path.join(ROOT, 'docs/tileset/tileset.json'), 'utf8')) };
   }
   if (url.includes('map.json')) return { ok: false, json: async () => ({}) };  // no saved map yet
+  if (url.includes('/api/')) return { ok: true, json: async () => ({ ok: true }) };
   throw new Error('fetch tak terduga: ' + url);
 };
 
@@ -108,9 +109,11 @@ const source = fs.readFileSync(path.join(ROOT, 'editor/app.js'), 'utf8');
 const sandbox = { document, window, Image, fetch, console, setTimeout, clearTimeout };
 const loader = new Function(
   'document', 'window', 'Image', 'fetch', 'console', 'setTimeout', 'clearTimeout',
-  `${source}\nreturn { __steps: ZOOM_STEPS, boot, state, cellSize, key, layerKey, paintAt, fillFrom, mapExtent,
-            fitToScreen, zoomToActual, inBounds, DEFAULT_COLS, DEFAULT_ROWS, TILE,
-            zoomIn, zoomOut, gameFrameRect, FRAME_MAP, newMap, save };`
+  `${source}\nreturn { __steps: ZOOM_STEPS, __sizes: BRUSH_SIZES, boot, state, cellSize, key, layerKey,
+            paintAt, fillFrom, mapExtent, fitToScreen, zoomToActual, inBounds, DEFAULT_COLS,
+            DEFAULT_ROWS, TILE, zoomIn, zoomOut, gameFrameRect, FRAME_MAP, newMap, save,
+            undo, redo, setBrushSize, brushUp, brushDown, brushCells, setTool, endStroke,
+            updateHistoryButtons };`
 );
 const editor = loader(sandbox.document, sandbox.window, sandbox.Image, sandbox.fetch,
   console, setTimeout, clearTimeout);
@@ -118,8 +121,10 @@ const editor = loader(sandbox.document, sandbox.window, sandbox.Image, sandbox.f
 // --------------------------------------------------------------------- assertions
 editor.boot().then(() => {
   const { state, cellSize, key, layerKey, paintAt, fillFrom, mapExtent, fitToScreen, zoomToActual,
-          zoomIn, zoomOut, gameFrameRect } = editor;
+          zoomIn, zoomOut, gameFrameRect, undo, redo, setBrushSize, brushUp, brushDown,
+          brushCells, setTool, endStroke } = editor;
   const steps = editor.__steps;
+  const sizes = editor.__sizes;
 
   console.log('grid 16x16');
   check('TILE adalah 16', editor.TILE, TILE);
@@ -192,6 +197,80 @@ editor.boot().then(() => {
     // seedIfEmpty memakai state.loadedMap; peta kosong yang sah harus tetap kosong
     return state.cells.size === 0;
   })(), true);
+
+  console.log('\nukuran kuas');
+  state.cells.clear();
+  setBrushSize(1);
+  check('ukuran awal 1 sel', state.brushSize, 1);
+  check('kuas 1x1 hanya satu sel', brushCells(5, 5), [{ x: 5, y: 5 }]);
+  setBrushSize(3);
+  const nine = brushCells(5, 5);
+  check('kuas 3x3 menyentuh sembilan sel', nine.length, 9);
+  check('kuas 3x3 tetap di tengah sel kursor',
+    nine.some((c) => c.x === 5 && c.y === 5), true);
+  state.tool = 'pencil';
+  state.brush = { name: 'grass', layer: 'ground', solid: false };
+  paintAt(20, 20);
+  endStroke();                     // pointerup, as in the browser
+  check('satu goresan kuas 3x3 mengecat 9 sel', state.cells.size, 9);
+  brushUp(); check('tombol + menaikkan ukuran', state.brushSize, 4);
+  brushDown(); brushDown(); check('tombol − menurunkan ukuran', state.brushSize, 2);
+  setBrushSize(999); check('ukuran dibatasi daftar', sizes.includes(state.brushSize), true);
+  check('batas atas 8', state.brushSize, 8);
+  setBrushSize(0); check('batas bawah 1', state.brushSize, 1);
+
+  console.log('\nbatal dan ulangi');
+  state.cells.clear();
+  state.undo.length = 0;
+  state.redo.length = 0;
+  setBrushSize(1);
+  state.brush = { name: 'path', layer: 'ground', solid: false };
+  paintAt(3, 3);
+  endStroke();                     // pointerup ends the stroke, in the browser
+  check('satu goresan, satu langkah', state.undo.length, 1);
+  check('belum ada yang bisa diulang', state.redo.length, 0);
+  const beforeUndo = state.cells.size;
+  check('batal berhasil', undo(), true);
+  check('batal menghapus goresan', state.cells.size, beforeUndo - 1);
+  check('goresan pindah ke tumpukan ulangi', state.redo.length, 1);
+  check('ulangi berhasil', redo(), true);
+  check('ulangi mengembalikan sel', state.cells.size, beforeUndo);
+  // the restored map must be the *same* map, not just the same size: a size
+  // check alone passed while undo silently dropped a different cell
+  check('ulangi mengembalikan sel yang sama',
+    state.cells.has(layerKey(3, 3, 'ground')), true);
+  undo();
+  check('batal membuang sel yang sama',
+    state.cells.has(layerKey(3, 3, 'ground')), false);
+  redo();
+  // a whole drag is one step: paint three cells inside a single stroke
+  state.undo.length = 0;
+  state.redo.length = 0;
+  state.strokeOpen = false;
+  state.painting = true;
+  paintAt(7, 7); paintAt(8, 7); paintAt(9, 7);
+  state.painting = false;
+  endStroke();
+  check('satu seret = satu langkah batal', state.undo.length, 1);
+
+  // drain both stacks; an undo with nothing left must say so, not throw
+  while (undo());
+  check('batal tidak error saat kosong', undo(), false);
+  while (redo());
+  check('ulangi tidak error saat kosong', redo(), false);
+
+  console.log('\nalat geser');
+  setTool('move');
+  check('alat geser aktif', state.tool, 'move');
+  setTool('pencil');
+  check('kembali ke pensil', state.tool, 'pencil');
+
+  console.log('\ntanpa pinch');
+  // Moving the map is a tool now. If pinch or two-finger pan ever comes back,
+  // this catches it: the editor must not carry pointer bookkeeping for it.
+  check('tidak ada state pointers', state.pointers, undefined);
+  check('tidak ada state pinch', state.pinch, undefined);
+  check('tidak ada fungsi pinchInfo', typeof editor.pinchInfo, 'undefined');
 
   console.log('\nzoom kelipatan 0.5');
   check('0.5 ada di daftar langkah', steps.includes(0.5), true);

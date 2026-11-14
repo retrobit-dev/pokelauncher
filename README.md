@@ -281,8 +281,9 @@ python3 tools/verify.py            # tileset, aset aplikasi, rute server, editor
 python3 tools/static_check.py      # XML, referensi @resource, impor Kotlin
 python3 tools/kotlin_symbols.py    # simbol dipakai tapi tidak diimpor
 python3 tools/kotlin_calls.py      # argumen @Composable yang hilang
-node    tools/editor_test.js       # editor: cat/hapus/isi, zoom 0.5x, bingkai gameplay
+node    tools/editor_test.js       # editor: cat/hapus/isi, kuas, batal/ulangi, zoom, bingkai
 node    tools/editor_load_test.js  # peta bawaan (kini kosong) termuat utuh
+python3 tools/sync_test.py         # editor vs game: piksel peta yang sama
 node    tools/game_rules_test.js   # aturan dunia, versi JS dari WorldTest
 node    tools/validate_starter_map.js   # peta kosong tetap valid: spawn di dalam, >= 16x10
 python3 tools/world_rules_sim.py   # skenario WorldTest tanpa JDK
@@ -310,13 +311,14 @@ python3 tools/preview_server.py --port 9000
 Server hanya menyajikan rute di atas; sisa repo tidak bisa diakses.
 
 **Dua mode, tombolnya di atas tablet.** Halaman `/` punya dua tombol ikon di atas perangkat, tanpa
-tulisan supaya barisnya tetap pendek; namanya ada di `aria-label`/`title` sehingga pembaca layar
-tetap menyebutkannya:
+tulisan supaya barisnya tetap pendek. Ikonnya glyph garis biasa (▣ layar, ✎ pensil) — keluarga yang
+sama dengan toolbar editor, bukan emoji berwarna yang tampil beda di tiap sistem. Namanya ada di
+`aria-label`/`title` sehingga pembaca layar tetap menyebutkannya:
 
 | Tombol | Isi |
 | --- | --- |
-| 🎮 | Mode gameplay: render tablet seperti di atas (default). |
-| 🗺 | Mode map editor: editor peta memenuhi layar, siap dipakai. |
+| ▣ | Mode gameplay: render tablet seperti di atas (default). |
+| ✎ | Mode map editor: editor peta memenuhi layar, siap dipakai. |
 
 Pilihannya disimpan di URL (`/?mode=editor`), jadi tautan atau muat ulang tetap membuka mode yang
 sama. Editor juga tetap bisa dibuka langsung di `/editor`.
@@ -327,34 +329,56 @@ menulis dokumen kerja `docs/tileset/map.json` (tidak masuk git) dan menerbitkann
 di Mode gameplay. Render tablet dibuat ulang di latar belakang saat peta berubah — sekitar 45 detik,
 karena itu tab menampilkan status *Menyiapkan tampilan dari peta editor…* alih-alih diam saja.
 
-**Alat editor ada di bawah peta.** Seluruh tombol editor berada di bar yang menempel di tepi bawah,
-bukan melayang di atas kanvas. Kanvas peta tingginya `100% - --bar-h`, jadi tidak ada tombol yang
-menutupi area menggambar.
+**Alat editor ada di bawah peta, dua kolom.** Semua tombol editor berada di bar yang menempel di
+tepi bawah, bukan melayang di atas kanvas. Kanvas peta tingginya `100% - --bar-h`, jadi tidak ada
+tombol yang menutupi area menggambar.
 
-Setiap tombol adalah **persegi berukuran sama** (`--btn`, default 56 px): ikon 22 px di atas, label
-kecil di baris bawahnya. Tombol yang ikut melebar mengikuti panjang labelnya dulu membuat bar
-terlihat compang-camping; sekarang lebarnya tetap dan `verify.py` menjaganya. Isi bar, dari kiri:
-pensil/hapus/ambil/isi · perkecil, zoom, perbesar, muat · simpan, baru · tambah tile.
-HUD (alat aktif, sel kursor, ukuran peta, bingkai gameplay) menempel di ujung kanan bar yang sama.
+Bar dipecah **per jenis pekerjaan**, bukan satu deretan panjang:
 
-Ukuran bar diatur dari dua variabel di `editor/app.css`: `--bar-h` (tinggi bar) dan `--btn` (sisi
-tombol). Mengubah `--btn` mengecilkan seluruh tombol sekaligus tanpa menyentuh markup.
+| Kolom | Baris | Isi |
+| --- | --- | --- |
+| Kiri | Menggambar | gambar · hapus · ambil · isi · batal · ulangi |
+| Kiri | Ukuran kuas | − · angka · + |
+| Kanan | Tampilan | geser · perkecil · zoom · perbesar · muat |
+| Kanan | Berkas | simpan · baru · tile |
 
-**Zoom editor 0.5× lalu bilangan bulat.** Langkahnya `0.5, 1, 2, 3, 4, 6, 8`. Di bawah 1× sel
-menjadi 8 px sehingga seluruh peta muat di layar; di atas 1× hanya bilangan bulat, supaya tepi tile
-tetap tajam dan tidak jatuh di antara piksel. Klik angka zoom untuk kembali ke 1×, `F` untuk
-memuat seluruh peta.
+Yang mengubah peta ada di dekat tangan yang menggambar; yang mengubah seluruh peta (geser, simpan,
+peta baru) ada di sisi jauh, jadi salah tekan tidak langsung menghapus pekerjaan. Tiap tombol
+persegi sama besar (`--btn`, 38 px): ikon di atas, label kecil di bawahnya. HUD (alat aktif, ukuran
+kuas, sel kursor, ukuran peta, bingkai gameplay) duduk di antara dua kolom. Seluruh bar hanya
+**98 px** — 6% tinggi panel 1600 px — dan `verify.py` menjaga ukuran serta susunan kolomnya.
 
-**Bingkai gameplay di kanvas.** Editor menggambar bingkai tipis 16×10 sel — persis yang ditampilkan
-Mode gameplay pada zoom 10× di panel 2560×1600 — plus area di luarnya diredupkan dan penanda spawn.
-Jadi sebelum menyimpan kamu sudah tahu bagian mana yang akan terlihat di game. Angka ini dihitung
-dari `PANEL_PX / GAME_ZOOM / TILE`, dan `verify.py` mencocokkannya dengan `DEFAULT` di `Input.kt`
-supaya bingkai dan game tidak pernah berbeda pendapat.
+Ukuran tombol diatur dari variabel di `editor/app.css`: `--btn` (sisi tombol) dan `--tool-rows`
+(2, karena dua kolom dua baris). `--bar-h` dihitung dari keduanya, jadi mengubah satu angka
+mengecilkan seluruh bar tanpa menyentuh markup.
 
-**Peta bawaan sengaja kosong.** `map.json` berisi 0 sel (80×50, spawn di 39,33) supaya peta bisa
-digambar ulang dari nol. Gameplay dan render tablet akan tampak kosong sampai kamu menggambar.
-Tombol **Baru** (`N`) membuat peta kosong baru dengan ukuran pilihanmu (minimal 16×10 sel, yaitu
-sebesar bingkai gameplay).
+**Menggeser peta pakai alat Geser, bukan pinch.** Pinch dan geser dua jari sudah dihapus. Dulu kedua
+gestur itu berebut satu jari dengan menggambar: sentuhan kedua yang tidak sengaja langsung
+memperkecil peta di tengah goresan. Sekarang memindahkan peta adalah alat yang dipilih, seperti
+pensil — satu jari menyeret peta di alat Geser (`V`), atau klik-tengah/kanan tanpa pindah alat.
+Zoom tetap dari tombol −/+/angka dan roda mouse.
+
+**Batal dan ulangi.** `Batal` (`Ctrl+Z`) dan `Ulangi` (`Ctrl+Y`), plus tombolnya di bar. Satu goresan
+= satu langkah, sepanjang apa pun seretannya; 60 langkah terakhir disimpan. Peta baru juga bisa
+dibatalkan.
+
+**Ukuran kuas.** Tombol `−`/`+` (atau `[`/`]`) memilih 1, 2, 3, 4, 6, atau 8 sel. Kuas berbentuk
+persegi di sekitar kursor, dan kotak kursor di kanvas ikut membesar supaya kelihatan berapa sel yang
+akan terkena.
+
+**Editor dan gameplay menggambar dengan aturan yang sama.** Ini bukan klaim, tapi dites:
+`tools/sync_test.py` merender satu peta lewat dua jalur — `tools/render_map.py` (jalur game) dan
+`editor/app.js` yang benar-benar dijalankan — lalu membandingkan pikselnya. Test itu menemukan dua
+bug nyata yang sudah ada sebelumnya:
+
+- `seedIfEmpty()` mengosongkan sel tepat setelah `loadMap()`, jadi editor **selalu terbuka kosong**
+  meski ada peta tersimpan;
+- `loadMap()` salah menyusun kunci sel, sehingga peta berisi pun terbaca sebagai peta kosong.
+
+Keduanya sudah diperbaiki, dan tesnya menjaga keduanya tetap benar. Aturan yang dipakai bersama:
+lapisan digambar `ground → building → object`, tile lebih dari satu sel tumbuh ke kanan-bawah dari
+sel yang dipilih (kanopi pohon 32x32 ada di separuh bawah rect-nya), dan latar sel kosong adalah
+`#5C7A45` — sama dengan `WorldCanvas.kt`.
 
 **Layar berisi lapangan.** `python3 tools/mock_ingame.py --field` menggambar peta + pemain tanpa
 HUD (itu yang dipasang ke panel), lalu `python3 tools/render_tablet.py` membingkainya.

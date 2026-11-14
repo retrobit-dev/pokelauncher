@@ -45,6 +45,7 @@ for layer in ('ground','building','object'):
         t=T.get(name)
         if not t: continue
         x,y=(int(v) for v in k.split(','))
+        # a multi-cell tile grows down and right from its cell (see render_map.py)
         for yy in range(t['h']):
             for xx in range(t['w']):
                 r,g,b,a=atlas.px(t['x']+xx,t['y']+yy)

@@ -132,17 +132,19 @@ DEVICE_PAGE = """<!DOCTYPE html>
     justify-content: center;
   }
   nav button {
-    /* one square icon button: no text label, so the row never reflows */
+    /* One square icon button, the same flat line glyphs the editor's own tool
+       bar uses: no text, no emoji, so the row never reflows and the two rows
+       read as the same control surface. */
     display: grid;
     place-items: center;
-    width: 48px;
-    height: 48px;
-    font-size: 22px;
+    width: 40px;
+    height: 40px;
+    font-size: 17px;
     line-height: 1;
     color: var(--ink);
     background: var(--btn);
     border: 2px solid var(--ink);
-    border-radius: 14px;
+    border-radius: 9px;
     padding: 0;
     cursor: pointer;
   }
@@ -176,13 +178,15 @@ DEVICE_PAGE = """<!DOCTYPE html>
   <!-- The mode tabs sit above the tablet: they switch what the screen shows,
        so they belong on the chrome, not inside the device. -->
   <nav aria-label="Mode tampilan">
-    <!-- Icons only: the names live in aria-label and title, so the row stays
-         short and a screen reader still says what each one does. -->
+    <!-- Icons only, and simple ones: the same glyph family as the editor's
+         toolbar (a screen, a pencil) rather than colourful emoji, which render
+         differently on every system and dwarf the 40px buttons. The names live
+         in aria-label and title, so a screen reader still says what each does. -->
     <button id="mode-game" aria-pressed="true" aria-label="Mode gameplay" title="Mode gameplay">
-      <span aria-hidden="true">🎮</span>
+      <span aria-hidden="true">▣</span>
     </button>
     <button id="mode-editor" aria-pressed="false" aria-label="Mode map editor" title="Mode map editor">
-      <span aria-hidden="true">🗺</span>
+      <span aria-hidden="true">✎</span>
     </button>
     <span id="render-state" data-state="__RENDERING__" role="status"></span>
   </nav>

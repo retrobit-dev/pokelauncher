@@ -1,14 +1,22 @@
 /* Johto map editor.
  *
  * The map is a grid of 16x16 cells. The canvas fills everything above the tool
- * bar; the view scrolls with WASD, arrows, wheel, two-finger drag or alt drag,
- * and zooms with the wheel, a pinch or the -/+/zoom buttons.
+ * bar; the view moves with the Geser tool (or middle/right drag, or the arrow
+ * keys) and scales with the -/+/zoom buttons or the wheel.
  *
- * Tools: pencil, eraser, picker, area fill. The Tile button opens the tileset.
+ * There is no pinch and no two-finger pan. Moving the map is a tool you pick,
+ * like drawing: on a tablet it is one finger in the Geser tool, and on a desk it
+ * is a middle drag if you would rather not change tools. Two fingers used to do
+ * both, which meant every accidental second touch zoomed the map out from under
+ * the stroke that was being drawn.
+ *
+ * Tools: pencil, eraser, picker, area fill, and Geser (move). The brush size
+ * says how many cells one stroke touches.
  *
  * The dashed frame drawn over the map is the gameplay viewport: the cells that
  * `Mode gameplay` shows. It uses the same numbers as the game (zoom, 1/6 dead
- * zone, camera clamped to the map), so the frame is a promise, not a guess.
+ * zone, camera clamped to the map, panel 2560x1600), so the frame is a promise,
+ * not a guess.
  */
 'use strict';
 
@@ -39,6 +47,14 @@ const DEFAULT_COLS = 160;
 const DEFAULT_ROWS = 100;
 const LAYERS = ['ground', 'building', 'object'];   // paint order: top layer drawn last
 
+// Brush sizes, in cells. Square brushes only: a square of 1 is the old single
+// cell, and a 4x4 square is a tree line in four strokes instead of sixteen.
+const BRUSH_SIZES = [1, 2, 3, 4, 6, 8];
+
+// How many edits can be taken back. A map is thousands of cells, so the limit
+// is on *strokes*, not cells; 60 strokes is more than anyone undoes by hand.
+const HISTORY_LIMIT = 60;
+
 /**
  * A cell holds one tile per layer, so a tree stands on grass instead of
  * replacing it. The map is keyed "x,y|layer"; the saved file groups them back
@@ -54,11 +70,12 @@ const $ = (id) => document.getElementById(id);
 const state = {
   tileset: null,        // tileset.json
   atlas: null,          // HTMLImageElement of the atlas
-  cells: new Map(),     // "x,y" -> { name, layer, solid } | null
+  cells: new Map(),     // "x,y|layer" -> { name, layer, solid } | null
   camera: { x: 0, y: 0 },   // top-left of the view, in map pixels
   zoom: 1,          // 1 = one cell is exactly 16x16 screen pixels
   tool: 'pencil',
   brush: null,          // { name, layer, solid }
+  brushSize: 1,         // cells per side, from BRUSH_SIZES
   tab: 'ground',
   hover: { x: 0, y: 0 },
   loadedMap: false,     // a saved map wins over the fresh sheet
@@ -68,9 +85,11 @@ const state = {
   painting: false,
   panning: false,
   panFrom: null,
-  // pinch state: two pointers and the distance/centre they started with
-  pointers: new Map(),
-  pinch: null,
+  // undo/redo: snapshots of the painted cells, one per stroke
+  undo: [],
+  redo: [],
+  // the stroke in progress, so a 40-cell drag is one undo step and not forty
+  strokeOpen: false,
 };
 
 const key = (x, y) => x + ',' + y;
@@ -103,6 +122,96 @@ function visibleRange() {
   };
 }
 
+// ------------------------------------------------------------------ history
+/**
+ * Snapshots are whole maps, on purpose.
+ *
+ * A diff-based undo would be smaller, but it also has to be right: one missed
+ * case (fill, erase on a layer that is not there, a new map) and undo silently
+ * corrupts the map. A 160x100 map is a few thousand cells, so a copy is cheap
+ * and impossible to get subtly wrong. Only the first HISTORY_LIMIT strokes are
+ * kept; older ones fall off the front.
+ */
+function snapshot() {
+  return new Map(state.cells);
+}
+
+function remember() {
+  state.undo.push(snapshot());
+  if (state.undo.length > HISTORY_LIMIT) state.undo.shift();
+  state.redo.length = 0;       // a new edit invalidates the redo branch
+  state.strokeOpen = false;    // the next paint starts a fresh stroke
+  updateHistoryButtons();
+}
+
+/**
+ * One entry per stroke: the map as it was before the first cell of the drag.
+ * Called from the first paint of a stroke, so dragging across 40 cells does not
+ * bury everything else under 40 undo steps.
+ */
+function beginStroke() {
+  if (state.strokeOpen) return;
+  remember();
+  state.strokeOpen = true;
+}
+
+function endStroke() {
+  state.strokeOpen = false;
+}
+
+function undo() {
+  if (!state.undo.length) { toast('Tidak ada yang bisa dibatalkan'); return false; }
+  state.redo.push(snapshot());
+  state.cells = state.undo.pop();
+  state.strokeOpen = false;
+  draw();
+  updateHud();
+  updateHistoryButtons();
+  return true;
+}
+
+function redo() {
+  if (!state.redo.length) { toast('Tidak ada yang bisa diulang'); return false; }
+  state.undo.push(snapshot());
+  state.cells = state.redo.pop();
+  state.strokeOpen = false;
+  draw();
+  updateHud();
+  updateHistoryButtons();
+  return true;
+}
+
+function updateHistoryButtons() {
+  if ($('undo')) {
+    $('undo').disabled = state.undo.length === 0;
+    $('redo').disabled = state.redo.length === 0;
+  }
+}
+
+// ------------------------------------------------------------------ brush size
+function setBrushSize(cells) {
+  const allowed = BRUSH_SIZES.filter((v) => v <= cells);
+  state.brushSize = allowed.length ? allowed[allowed.length - 1] : BRUSH_SIZES[0];
+  updateHud();
+  draw();
+}
+
+function brushUp() { setBrushSize(state.brushSize + 1); }
+function brushDown() { setBrushSize(state.brushSize - 1); }
+
+/** The cells one stroke touches: a square of brushSize centred on the cell. */
+function brushCells(x, y) {
+  const n = state.brushSize;
+  const half = Math.floor((n - 1) / 2);
+  const out = [];
+  for (let dy = 0; dy < n; dy++) {
+    for (let dx = 0; dx < n; dx++) {
+      out.push({ x: x - half + dx, y: y - half + dy });
+    }
+  }
+  return out;
+}
+
 // ------------------------------------------------------------------ drawing
 function draw() {
   const canvas = $('map');
@@ -118,25 +227,30 @@ function draw() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.imageSmoothingEnabled = false;
 
-  // backdrop: the empty field beyond the map edge
+  // backdrop: the empty ground the game paints where a cell has no tile
+  // (WorldCanvas.kt uses 0xFF5C7A45). Matching it means an empty map looks the
+  // same in the editor and on the device, which is the whole point of the
+  // frame being drawn here.
   ctx.fillStyle = '#5c7a45';
   ctx.fillRect(0, 0, w, h);
 
   const size = cellSize();
   const { x0, y0, x1, y1 } = visibleRange();
 
-  // ground first, then objects, then buildings: same order as tileset.json
+  // ground first, then buildings, then objects: same order as the game draws
+  // them (WorldCanvas.drawMap), so a tall object overhangs exactly as it will
+  // on the device. There is no grid: the app draws none, and an editor that
+  // shows one is showing something the game cannot.
   for (const layer of LAYERS) {
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
         const cell = state.cells.get(layerKey(x, y, layer));
         if (!cell) continue;
-        drawTile(ctx, cell.name, x * size - state.camera.x, y * size - state.camera.y, size);
+        drawTile(ctx, cell.name, x, y, size);
       }
     }
   }
 
-  drawGrid(ctx, w, h, size, x0, y0, x1, y1);
   drawGameFrame(ctx, size, w, h);
   drawCursor(ctx, size);
 }
@@ -159,8 +273,7 @@ function draw() {
  */
 function gameFrameRect() {
   const size = cellSize();
-  // everything below is in screen pixels, so the frame scales with the zoom
-  // all in screen pixels: cells * size
+  // everything below is in screen pixels: cells * size
   const mapW = state.cols * size;
   const mapH = state.rows * size;
   const viewW = FRAME_MAP.w * size;
@@ -223,11 +336,14 @@ function drawGameFrame(ctx, size, w, h) {
   ctx.restore();
 }
 
-function drawTile(ctx, name, px, py, size) {
+function drawTile(ctx, name, cellX, cellY, size) {
   const tile = state.tileset.tiles[name];
   if (!tile || !state.atlas) return;
-  // A 2x2 piece (the tree) must cover four cells, not be squashed into one.
-  // Its own w/h say how many cells it spans.
+  // A 2x2 piece (the tree) must cover four cells, not be squashed into one, and
+  // it hangs off its anchor cell: see tileOrigin().
+  const origin = tileOrigin(tile, cellX, cellY);
+  const px = origin.x * size - state.camera.x;
+  const py = origin.y * size - state.camera.y;
   ctx.drawImage(
     state.atlas,
     tile.x, tile.y, tile.w, tile.h,                                  // source rect
@@ -235,53 +351,62 @@ function drawTile(ctx, name, px, py, size) {
   );
 }
 
-function drawGrid(ctx, w, h, size, x0, y0, x1, y1) {
-  // A faint grid only when a cell is big enough to see it; at zoom 1 it would
-  // read as noise over the art.
-  if (size < 24) return;
-  ctx.save();
-  ctx.strokeStyle = 'rgba(59, 47, 30, .13)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  const startX = (0 - state.camera.x % size + size) % size;
-  const startY = (0 - state.camera.y % size + size) % size;
-  for (let px = startX; px < w; px += size) {
-    ctx.moveTo(Math.round(px) + .5, 0);
-    ctx.lineTo(Math.round(px) + .5, h);
-  }
-  for (let py = startY; py < h; py += size) {
-    ctx.moveTo(0, Math.round(py) + .5);
-    ctx.lineTo(w, Math.round(py) + .5);
-  }
-  ctx.stroke();
-  ctx.restore();
-}
-
+/** The brush footprint: one cell at size 1, a square of cells above that. */
 function drawCursor(ctx, size) {
   const { x, y } = state.hover;
-  const px = x * size - state.camera.x;
-  const py = y * size - state.camera.y;
-  if (px < -size || py < -size) return;
+  if (!inBounds(x, y) && state.brushSize === 1) return;
+  const half = Math.floor((state.brushSize - 1) / 2);
+  const px = (x - half) * size - state.camera.x;
+  const py = (y - half) * size - state.camera.y;
+  const side = size * state.brushSize;
+  if (px + side < 0 || py + side < 0) return;
   ctx.save();
   ctx.lineWidth = 2;
   ctx.strokeStyle = 'rgba(251, 243, 220, .95)';
-  ctx.strokeRect(px + 1, py + 1, size - 2, size - 2);
+  ctx.strokeRect(px + 1, py + 1, side - 2, side - 2);
   ctx.strokeStyle = 'rgba(59, 47, 30, .85)';
-  ctx.strokeRect(px - .5, py - .5, size + 1, size + 1);
+  ctx.strokeRect(px - .5, py - .5, side + 1, side + 1);
   ctx.restore();
 }
 
+/**
+ * Where a tile is drawn, in cells, given the cell that was painted: exactly the
+ * cell. A multi-cell tile grows down and right from the cell you click, and the
+ * click lands on its top-left.
+ *
+ * That is not arbitrary. The 2x2 tree's art has its canopy in the lower half of
+ * the 32x32 rect (the top 16 rows are empty), so a tree painted at (x, y) shows
+ * bare cell at (x, y) and canopy over (x, y+1) and (x+1, y+1). This is also the
+ * rule the game and both renderers already use, which is the point: the editor
+ * has to place a tile exactly where the device will.
+ */
+function tileOrigin(tile, cellX, cellY) {
+  return { x: cellX, y: cellY };
+}
+
 // ------------------------------------------------------------------ editing
-function paintAt(x, y) {
-  if (!inBounds(x, y)) return;      // the map has a fixed edge
+/** Paints one cell, without touching the undo history. */
+function paintCell(x, y) {
+  if (!inBounds(x, y)) return false;      // the map has a fixed edge
   if (state.tool === 'erase') {
     // Remove one layer, topmost first: deleting a tree keeps the lawn under it,
     // and a second erase on the same cell removes the lawn itself.
     for (const layer of ['object', 'building', 'ground']) {
-      if (state.cells.delete(layerKey(x, y, layer))) return;
+      if (state.cells.delete(layerKey(x, y, layer))) return true;
     }
-    return;
+    return false;
   }
+  if (!state.brush) {
+    toast('Pilih tile dari + dulu');
+    return false;
+  }
+  // one tile per layer: painting ground under a tree keeps the tree
+  state.cells.set(layerKey(x, y, state.brush.layer), { ...state.brush });
+  return true;
+}
+
+/** Applies the brush footprint, remembering the stroke once. */
+function paintAt(x, y) {
   if (state.tool === 'pick') {
     // topmost painted layer wins: that is what the eye sees
     let picked = null;
@@ -297,29 +422,32 @@ function paintAt(x, y) {
     }
     return;
   }
-  if (!state.brush) {
-    toast('Pilih tile dari + dulu');
-    return;
-  }
-  // one tile per layer: painting ground under a tree keeps the tree
-  state.cells.set(layerKey(x, y, state.brush.layer), { ...state.brush });
+  // Any real change is one undo step, and the whole footprint is one change.
+  const cells = brushCells(x, y);
+  const touched = cells.some((c) => inBounds(c.x, c.y)
+    && (state.tool === 'erase'
+      ? ['object', 'building', 'ground'].some((l) => state.cells.has(layerKey(c.x, c.y, l)))
+      : state.brush));
+  if (!touched) return;
+  beginStroke();
+  for (const cell of cells) paintCell(cell.x, cell.y);
 }
 
 function fillFrom(x, y) {
-  const target = state.brush
-    ? state.cells.get(layerKey(x, y, state.brush.layer)) || null
-    : null;
-  const targetName = target ? target.name : null;
   if (!state.brush) {
     toast('Pilih tile dari + dulu');
     return;
   }
+  const target = state.cells.get(layerKey(x, y, state.brush.layer)) || null;
+  const targetName = target ? target.name : null;
   if (target && target.layer === state.brush.layer && target.name === state.brush.name) return;
 
   // flood fill across empty cells is unbounded, so cap the work
   const limit = 20000;
   const queue = [[x, y]];
   const seen = new Set();
+  let painted = 0;
+  beginStroke();
   while (queue.length && seen.size < limit) {
     const [cx, cy] = queue.pop();
     const k = key(cx, cy);
@@ -329,10 +457,24 @@ function fillFrom(x, y) {
     const cell = state.cells.get(layerKey(cx, cy, state.brush.layer)) || null;
     const same = (cell ? cell.name : null) === targetName;
     if (!same) continue;
-    paintAt(cx, cy);
+    paintCell(cx, cy);
+    painted++;
     queue.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
   }
+  endStroke();
+  if (!painted) state.undo.pop();      // nothing changed: do not leave a step
   if (seen.size >= limit) toast('Isi area dihentikan: terlalu luas');
+  updateHistoryButtons();
+}
+
+// ------------------------------------------------------------------ tools
+function setTool(tool) {
+  state.tool = tool;
+  const map = $('map');
+  // the Geser tool is the one tool that does not draw, so the cursor says so
+  map.style.cursor = tool === 'move' ? 'grab' : 'crosshair';
+  updateHud();
+  draw();
 }
 
 // ------------------------------------------------------------------ palette
@@ -430,22 +572,26 @@ function showBrush() {
 }
 
 // ------------------------------------------------------------------ hud
-const TOOL_LABEL = { pencil: 'Pensil', erase: 'Hapus', pick: 'Ambil', fill: 'Isi' };
+const TOOL_LABEL = { pencil: 'Pensil', erase: 'Hapus', pick: 'Ambil', fill: 'Isi', move: 'Geser' };
 
 function updateHud() {
   $('hud-tool').textContent = TOOL_LABEL[state.tool] + (state.brush ? ` · ${state.brush.name}` : '');
+  $('hud-brush').textContent = `kuas ${state.brushSize}×${state.brushSize}`;
   $('hud-cell').textContent = `${state.hover.x}, ${state.hover.y}`;
   $('hud-size').textContent =
     `${state.cols}×${state.rows} sel · ${state.cells.size} terpakai · ${cellSize()} px`;
   $('hud-frame').textContent = `bingkai ${FRAME_MAP.w}×${FRAME_MAP.h} sel`;
   $('zoom-value').textContent = `${state.zoom}×`;
-  for (const id of ['pencil', 'erase', 'pick', 'fill']) {
+  if ($('size-value')) $('size-value').textContent = String(state.brushSize);
+  for (const id of ['pencil', 'erase', 'pick', 'fill', 'move']) {
     const button = $('tool-' + id);
+    if (!button) continue;
     const on = state.tool === id;
     button.classList.toggle('active', on);
     // aria-pressed, so the active tool is not conveyed by colour alone
     button.setAttribute('aria-pressed', String(on));
   }
+  updateHistoryButtons();
 }
 
 /** Steps the zoom by one and keeps the point under (atX, atY) fixed. */
@@ -467,11 +613,6 @@ function zoomIn(atX, atY) {
 
 function zoomOut(atX, atY) {
   return zoomTo(ZOOM_STEPS.indexOf(state.zoom) - 1, atX, atY);
-}
-
-function setTool(tool) {
-  state.tool = tool;
-  updateHud();
 }
 
 // ------------------------------------------------------------------ drawer
@@ -549,27 +690,38 @@ async function loadMap() {
         continue;
       }
       if (!value) continue;
+      const [cx, cy] = xy.split(',').map(Number);
       for (const layer of LAYERS) {
         const name = value[layer];
         if (!name || !state.tileset.tiles[name]) continue;
-        state.cells.set(layerKey(...xy.split(',').map(Number), layer),
+        // layerKey(x, y, layer): the layer has to be the third argument, not
+        // the last item of a spread, or every cell is stored under the wrong key
+        // and the map loads "successfully" as empty.
+        state.cells.set(layerKey(cx, cy, layer),
           { name, layer, solid: !!state.tileset.tiles[name].solid });
       }
     }
     toast(`Peta dimuat (${state.cells.size} sel)`);
   } catch {
-    /* no saved map yet: start from the default lawn */
+    /* no saved map yet: start from the default sheet */
   }
 }
 
 /**
- * A blank sheet: no cells at all, and no seeded lawn.
+ * A blank sheet for a first run, and nothing at all for a loaded map.
  *
  * It used to fill the map with grass on first run. That hid a real question
  * ("what is the world made of?") behind a default nobody chose, and it made an
  * empty map impossible to author on purpose.
+ *
+ * It also used to clear the cells unconditionally, which ran right after
+ * loadMap() and quietly threw away every saved cell: the editor opened on an
+ * empty map whether or not one had been drawn. The guard is the whole function
+ * now: a map that was loaded, or that the user deliberately made blank, is
+ * never touched.
  */
 function seedIfEmpty() {
+  if (state.loadedMap) return;      // a loaded map is the map, not a default
   state.cells.clear();
   state.spawn = null;
 }
@@ -601,6 +753,7 @@ function newMap() {
   }
   if (state.cells.size && !window.confirm('Buang semua sel dan mulai peta baru?')) return;
 
+  remember();                 // a new map is undoable too
   state.cols = cols;
   state.rows = rows;
   state.cells.clear();
@@ -654,69 +807,20 @@ function zoomToActual() {
   state.camera.y = 0;
 }
 
-/** Distance and centre of the two pointers currently on the canvas. */
-function pinchInfo() {
-  const points = Array.from(state.pointers.values());
-  if (points.length < 2) return null;
-  const [a, b] = points;
-  return {
-    distance: Math.hypot(a.x - b.x, a.y - b.y),
-    cx: (a.x + b.x) / 2,
-    cy: (a.y + b.y) / 2,
-  };
-}
-
 function bindCanvas() {
   const canvas = $('map');
 
   canvas.addEventListener('pointermove', (event) => {
-    if (state.pointers.has(event.pointerId)) {
-      state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    }
-
-    // Two fingers: pan with the midpoint, zoom with the distance between them.
-    // Handled before painting, and painting is cancelled while it runs, so a
-    // pinch never leaves a trail of painted cells behind it.
-    if (state.pointers.size >= 2) {
-      const now = pinchInfo();
-      if (state.pinch && now) {
-        const { start } = state.pinch;
-        if (start.distance > 0) {
-          const scale = now.distance / start.distance;
-          const wanted = start.zoom * scale;
-          // Pick the step nearest the gesture, so a slow pinch does not jump
-          // through every step in the list.
-          let best = state.zoom;
-          let bestGap = Infinity;
-          for (const step of ZOOM_STEPS) {
-            const gap = Math.abs(step - wanted);
-            if (gap < bestGap) { bestGap = gap; best = step; }
-          }
-          if (best !== state.zoom) {
-            const cell = screenToCell(now.cx, now.cy);
-            state.zoom = best;
-            state.camera.x = cell.x * cellSize() - now.cx;
-            state.camera.y = cell.y * cellSize() - now.cy;
-          }
-        }
-        // the midpoint drag pans, exactly like a two-finger swipe
-        state.camera.x = state.pinch.startCamera.x
-          - (now.cx - start.cx) * (cellSize() / state.pinch.startCell);
-        state.camera.y = state.pinch.startCamera.y
-          - (now.cy - start.cy) * (cellSize() / state.pinch.startCell);
-      }
-      state.painting = false;
-      draw();
-      updateHud();
-      return;
-    }
-
+    // Geser is the move tool: one finger drags the map, like a hand tool. It is
+    // a tool rather than a gesture so that a stroke can never pan by accident,
+    // and so that a touch screen needs no second finger to scroll.
     if (state.panning && state.panFrom) {
       state.camera.x = state.panFrom.cx - (event.clientX - state.panFrom.x);
       state.camera.y = state.panFrom.cy - (event.clientY - state.panFrom.y);
       draw();
       return;
     }
+
     const cell = screenToCell(event.clientX, event.clientY);
     if (cell.x !== state.hover.x || cell.y !== state.hover.y) {
       state.hover = cell;
@@ -728,24 +832,9 @@ function bindCanvas() {
 
   canvas.addEventListener('pointerdown', (event) => {
     canvas.setPointerCapture(event.pointerId);
-    state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
 
-    // A second finger turns whatever was happening into a pinch: stop painting
-    // first, or the first finger's press would keep drawing while zooming.
-    if (state.pointers.size === 2) {
-      state.painting = false;
-      const now = pinchInfo();
-      state.pinch = {
-        start: { ...now, zoom: state.zoom },
-        startCamera: { x: state.camera.x, y: state.camera.y },
-        startCell: state.zoom,
-      };
-      return;
-    }
-    if (state.pointers.size > 2) return;
-
-    // middle mouse, or space held, pans the map
-    if (event.button === 1 || event.button === 2 || event.altKey) {
+    // middle mouse, right mouse or alt-drag pans without leaving the tool
+    if (event.button === 1 || event.button === 2 || event.altKey || state.tool === 'move') {
       state.panning = true;
       state.panFrom = {
         x: event.clientX, y: event.clientY,
@@ -758,23 +847,23 @@ function bindCanvas() {
     const cell = screenToCell(event.clientX, event.clientY);
     state.hover = cell;
     if (state.tool === 'fill') {
+      state.strokeOpen = false;
       fillFrom(cell.x, cell.y);
     } else {
       state.painting = true;
+      state.strokeOpen = false;    // a press always starts a new undo step
       paintAt(cell.x, cell.y);
     }
     draw();
     updateHud();
   });
 
-  const stop = (event) => {
-    if (event && event.pointerId !== undefined) state.pointers.delete(event.pointerId);
-    else state.pointers.clear();
-    if (state.pointers.size < 2) state.pinch = null;
+  const stop = () => {
     state.painting = false;
     state.panning = false;
     state.panFrom = null;
-    $('map').style.cursor = 'crosshair';
+    endStroke();
+    canvas.style.cursor = state.tool === 'move' ? 'grab' : 'crosshair';
   };
   canvas.addEventListener('pointerup', stop);
   canvas.addEventListener('pointercancel', stop);
@@ -799,14 +888,29 @@ function bindKeys() {
     if (event.target instanceof HTMLInputElement) return;
     const k = event.key.toLowerCase();
 
+    // undo/redo first: ctrl+z must not fall through to a tool shortcut
+    if ((event.ctrlKey || event.metaKey) && k === 'z' && !event.shiftKey) {
+      event.preventDefault();
+      undo();
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && (k === 'y' || (k === 'z' && event.shiftKey))) {
+      event.preventDefault();
+      redo();
+      return;
+    }
+
     if (k === 'escape') { toggleDrawer(false); return; }
     if (k === 'b') { setTool('pencil'); return; }
     if (k === 'e') { setTool('erase'); return; }
     if (k === 'i') { setTool('pick'); return; }
     if (k === 'g') { setTool('fill'); return; }
+    if (k === 'v') { setTool('move'); return; }
     if (k === 'f') { fitToScreen(); draw(); updateHud(); return; }
     if (k === '1') { zoomToActual(); draw(); updateHud(); return; }
     if (k === 'n') { newMap(); return; }
+    if (k === '[') { brushDown(); return; }
+    if (k === ']') { brushUp(); return; }
     // + and - already work on most layouts; the zoom buttons carry the same
     // actions for touch, where there is no keyboard at all.
     if (k === '=' || k === '+') { if (zoomIn()) { draw(); updateHud(); } return; }
@@ -836,6 +940,11 @@ function bindChrome() {
   $('tool-erase').addEventListener('click', () => setTool('erase'));
   $('tool-pick').addEventListener('click', () => setTool('pick'));
   $('tool-fill').addEventListener('click', () => setTool('fill'));
+  $('tool-move').addEventListener('click', () => setTool('move'));
+  $('undo').addEventListener('click', () => undo());
+  $('redo').addEventListener('click', () => redo());
+  $('size-up').addEventListener('click', () => brushUp());
+  $('size-down').addEventListener('click', () => brushDown());
   $('add').addEventListener('click', () => toggleDrawer());
   $('close').addEventListener('click', () => toggleDrawer(false));
   $('save').addEventListener('click', () => save());

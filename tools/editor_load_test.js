@@ -41,6 +41,10 @@ m.boot().then(()=>{
   const expect = Object.values(JSON.parse(fs.readFileSync(path.join(ROOT,'app/src/main/assets/tileset/map.json'),'utf8')).cells)
     .reduce((n,c)=>n+Object.keys(c).length,0);
   check('setiap lapisan terbaca', st.cells.size, expect);
+  // The editor must open on the file it loaded. seedIfEmpty() used to clear the
+  // cells right after loadMap(), so this passed only because the shipped map
+  // happened to be empty. With a map that has cells, it has to stay loaded.
+  if (expect > 0) check('sel tidak dibuang setelah dimuat', st.cells.size > 0, true);
   if (expect) {
     // a tree cell must keep its grass: this is the round trip that decides
     // whether a layered map survives the editor

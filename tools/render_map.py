@@ -5,9 +5,10 @@
 
 Layers are drawn ground -> building -> object, transparent pixels are skipped
 (so a tree's canopy sits on the grass instead of punching a black hole), and a
-2x2 piece is drawn once at its top-left cell. This is the same rule the Compose
-renderer follows, which is what makes the output worth looking at before
-shipping a map.
+2x2 piece hangs off its anchor cell: the painted cell is the bottom-left of the
+tile, so the canopy covers the cell above it. This is the same rule the editor
+and the Compose renderer follow, which is what makes the output worth looking at
+before shipping a map.
 """
 from __future__ import annotations
 
@@ -93,6 +94,10 @@ def main(argv: list[str]) -> int:
             tile = tiles.get(name)
             if not tile:
                 continue
+            # A multi-cell tile grows down and right from the cell that carries
+            # it: the painted cell is its top-left, and the game draws the whole
+            # rect from there. The 2x2 tree's canopy is in the lower half of its
+            # 32x32 rect, so it covers the cell below and the one to its right.
             x, y = (int(v) for v in key.split(","))
             for yy in range(tile["h"]):
                 for xx in range(tile["w"]):
