@@ -100,10 +100,9 @@ class GameViewModel(context: Context) : ViewModel() {
                 mapWidth = map.widthPx,
                 mapHeight = map.heightPx,
             ),
-            // 12x: 13x8 cells on the panel and a 192 px player, which is the
-            // framing HeartGold uses (a 32 px hero on a 192 px screen). The
-            // default must be one of TouchInput.STEPS; defaultIndex() throws
-            // otherwise instead of silently landing on the wrong zoom.
+            // 10x: 16x10 cells on the panel and a 160 px player. The default
+            // must be one of TouchInput.STEPS; defaultIndex() throws otherwise
+            // instead of silently landing on the wrong zoom.
             scale = TouchInput.DEFAULT,
         )
         startSurvivalLoop()
@@ -131,15 +130,20 @@ class GameViewModel(context: Context) : ViewModel() {
                     r.resize(current.viewWidth, current.viewHeight, map.widthPx, map.heightPx)
                     r.jumpTo(world.playerX * GameMap.TILE, world.playerY * GameMap.TILE)
                 }
-                val moved = r?.advance(
-                    (world?.playerX ?: 0) * GameMap.TILE,
-                    (world?.playerY ?: 0) * GameMap.TILE,
-                ) ?: false
-                if (moved && r != null) {
-                    _state.value = _state.value.copy(
-                        camera = r.camera(),
-                        revision = _state.value.revision + 1,
+                // The rig is captured once at the top of the loop: it is
+                // assigned only in init, so re-reading it here would just be a
+                // second nullable check the compiler can prove redundant.
+                if (r != null) {
+                    val moved = r.advance(
+                        (world?.playerX ?: 0) * GameMap.TILE,
+                        (world?.playerY ?: 0) * GameMap.TILE,
                     )
+                    if (moved) {
+                        _state.value = _state.value.copy(
+                            camera = r.camera(),
+                            revision = _state.value.revision + 1,
+                        )
+                    }
                 }
                 delay(CAMERA_FRAME_MILLIS)
             }
