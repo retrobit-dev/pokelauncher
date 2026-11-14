@@ -380,6 +380,13 @@ def check_preview_assets() -> None:
         for needle, why in (
             ('path in ("/", "/index.html", "/device", "/device.html")',
              "the front page must be the device render, not the editor"),
+            ("image-rendering: pixelated",
+             "the shot is 2772px shown on a ~1400px pane; without pixelated the "
+             "browser smooths 128px cells into mush and the sprite reads as a blob"),
+            ("crisp-edges", "Firefox spells the same rule crisp-edges"),
+            ('?v=__STAMP__',
+             "the image URL must change per render, or a mounted iframe keeps "
+             "showing the bitmap it decoded earlier"),
             ('"/editor"', "the editor must move to /editor, not the front page"),
             ('"/api/map"', "the editor saves through /api/map"),
             ('"johto-tileset.png"', "the palette reads the tileset atlas"),
