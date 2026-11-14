@@ -119,9 +119,11 @@ DEVICE_PAGE = """<!DOCTYPE html>
   }
 
   /* ---------------------------------------------------------- the tabs
-     Two modes, side by side under the tablet. Not a <select>: the point is to
-     see both options at once. aria-pressed says which one is on, so the state
-     is readable by a screen reader and not only by colour. */
+     Two modes, side by side *above* the tablet, with icons only so the row
+     stays one short line on a wide screen. Not a <select>: the point is to see
+     both options at once. aria-pressed says which one is on, so the state is
+     readable by a screen reader and not only by colour; the names live in
+     aria-label and title. */
   nav {
     flex: 0 0 auto;
     display: flex;
