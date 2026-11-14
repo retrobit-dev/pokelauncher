@@ -640,7 +640,7 @@ class WorldTest {
             nowMillis = 7L,
             mapFingerprint = WorldState.fingerprint(world.map),
         )
-        val sameMap = World(world.map, tiles)
+        val sameMap = World(world.map, world.tiles)
         val loaded = WorldState.fromJson(json, sameMap, fallbackDay = 0)
         assertNotNull("an unchanged map must keep its save", loaded)
         WorldState.restore(loaded!!.snapshot, sameMap)
