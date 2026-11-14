@@ -809,12 +809,45 @@ def check_editor() -> None:
         if control not in html:
             fail(f"editor/index.html: {control} is missing ({why})")
 
-    # half-step zoom, and the frame drawn over the map
-    if "0.5" not in js or "ZOOM_STEPS" not in js:
-        fail("editor/app.js: the zoom steps must include 0.5")
+    # half-step zoom: read the array itself. Searching the file for "0.5" was
+    # useless - the number appears in a dozen unrelated places - so a steps
+    # list without it still passed.
+    steps_match = re.search(r"ZOOM_STEPS\s*=\s*\[([^\]]+)\]", js)
+    if not steps_match:
+        fail("editor/app.js: ZOOM_STEPS must be a literal array")
+    else:
+        steps = [float(v) for v in steps_match.group(1).split(",")]
+        if 0.5 not in steps:
+            fail("editor/app.js: the zoom steps must include 0.5")
+        if steps != sorted(steps):
+            fail("editor/app.js: ZOOM_STEPS must be ascending, or zoom in jumps around")
+        if any(v != int(v) for v in steps if v > 1):
+            fail("editor/app.js: zoom above 1 must be whole numbers, "
+                 "or tiles land between pixels")
     for needle in ("gameFrameRect", "drawGameFrame", "DEAD_ZONE"):
         if needle not in js:
             fail(f"editor/app.js: {needle} missing; the gameplay frame would not be drawn")
+    # Defining the frame helpers is not enough: draw() has to paint them, or the
+    # code looks right and the canvas is wrong. The body of draw() is the slice
+    # from its header to the next top-level function, which is what is checked
+    # for a real call. Searching the whole file passed while draw() never
+    # touched the frame, because the name also appears in the function header.
+    head = re.search(r"\nfunction draw\(\)\s*\{", js)
+    if not head:
+        fail("editor/app.js: draw() is missing")
+    else:
+        rest = js[head.end():]
+        nxt = re.search(r"\nfunction ", rest)
+        body = rest[:nxt.start()] if nxt else rest
+        if "drawGameFrame(" not in body:
+            fail("editor/app.js: draw() never calls drawGameFrame, "
+                 "so the gameplay frame is invisible")
+    # ...and the function it calls has to exist. Without this, renaming the
+    # definition left the call behind and the file still "passed", even though
+    # the editor would throw a ReferenceError the moment it drew a frame.
+    for fn in ("drawGameFrame", "gameFrameRect"):
+        if not re.search(r"\nfunction %s\s*\(" % fn, js):
+            fail(f"editor/app.js: {fn} is used but never defined")
 
     # the editor's idea of the gameplay viewport must match the app's
     with open(os.path.join(ROOT, "app", "src", "main", "java", "dev", "retrobit",
