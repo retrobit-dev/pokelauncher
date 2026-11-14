@@ -1,0 +1,247 @@
+name: Android build
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # The wrapper jar is committed, so ./gradlew works without a system Gradle.
+      - name: Compile and run unit tests
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace --console=plain assembleDebug testDebugUnitTest 2>&1 | tee build.log
+
+      # The map editor is plain JS served by preview_server.py, so it is tested
+      # here rather than by Gradle: layout, the 16x16 grid, painting, bounds.
+      # The game core is plain Kotlin with no Android imports, so its rules are
+      # covered by testDebugUnitTest above. The browser tools and the shipped
+      # map are checked here.
+      - name: Check tools, editor and starter map
+        run: |
+          set -o pipefail
+          {
+            python3 tools/verify.py
+            python3 tools/static_check.py
+            python3 tools/kotlin_symbols.py
+            python3 tools/kotlin_calls.py
+            node tools/editor_test.js
+            node tools/game_rules_test.js
+            node tools/validate_starter_map.js
+            node tools/editor_load_test.js
+            python3 tools/world_rules_sim.py
+            python3 tools/mock_ingame.py --night
+            python3 tools/mock_ingame.py
+            python3 tools/mock_ingame.py --field
+            git diff --exit-code -- docs/editor/ingame.png docs/editor/ingame-night.png docs/editor/field.png
+            python3 tools/render_tablet.py
+            git diff --exit-code -- docs/preview-tablet.png
+          } 2>&1 | tee checks.log
+
+      # Raw job logs live on a blob host that some networks cannot reach, so the
+      # compiler output is also emitted as workflow annotations (readable via
+      # the REST API) and uploaded as an artifact.
+      # The check step's output is only visible in the raw job log, which the
+      # sandbox cannot download, so surface it the same way as compiler errors.
+      - name: Report check results as annotations
+        if: always()
+        continue-on-error: true
+        run: |
+          python3 - <<'EOF'
+          import pathlib
+
+          log = pathlib.Path("checks.log")
+          if not log.exists():
+              print("::notice title=checks::checks.log missing")
+              raise SystemExit(0)
+          for line in log.read_text(errors="replace").splitlines():
+              clean = line.strip().replace("::", ":").replace("%", "%25")
+              if not clean:
+                  continue
+              level = "error" if ("FAIL" in clean or "problem" in clean or "bermasalah" in clean
+                                  or "Error" in clean) else "notice"
+              print(f"::{level} title=checks::"[:900] + clean[:400])
+
+          EOF
+
+      - name: Report compiler errors as annotations
+        if: always()
+        continue-on-error: true
+        run: |
+          python3 - <<'EOF'
+          """Re-emit the interesting parts of the Gradle log as annotations.
+
+          Raw job logs are hosted on a blob domain that some networks cannot
+          reach, so the relevant lines are surfaced here instead. Annotations
+          are capped at ~1 KB per run, hence the filtering.
+          """
+          import glob
+          import os
+          import pathlib
+          import re
+
+
+          def ann(kind, message):
+              clean = str(message).replace("::", ":").replace("%", "%25").replace("\r", "")
+              print(f"::{kind} title=build::{clean}"[:900])
+
+
+          log = pathlib.Path("build.log")
+          if not log.exists():
+              ann("notice", "build.log missing")
+              raise SystemExit(0)
+
+          log_text = log.read_text(errors="replace")
+          success = "BUILD SUCCESSFUL" in log_text
+          if success:
+              ann("notice", "BUILD SUCCESSFUL")
+
+          # On failure, show the merged values lines aapt2 complains about.
+          if not success:
+              for path in sorted(glob.glob(
+                      "app/build/intermediates/**/merged.dir/values*/values*.xml",
+                      recursive=True))[:4]:
+                  try:
+                      content = pathlib.Path(path).read_text(errors="replace").splitlines()
+                  except OSError:
+                      continue
+                  for index, line in enumerate(content):
+                      if "??" in line or "attr/??" in line:
+                          ann("error", f"{os.path.relpath(path)}:{index + 1}: {line.strip()[:160]}")
+
+          # Test failures carry their assertion message in the XML/HTML report;
+          # surface it here so a sandbox without access to the artifact host can
+          # still see why a test failed.
+          for report in sorted(glob.glob("app/build/test-results/**/*.xml", recursive=True))[:3]:
+              try:
+                  content = pathlib.Path(report).read_text(errors="replace")
+              except OSError:
+                  continue
+              for match in re.finditer(
+                      r'<testcase name="([^"]+)".*?<failure[^>]*>(.*?)</failure>',
+                      content, re.S):
+                  message = re.sub(r"\s+", " ", match.group(2))[:420]
+                  ann("error", f"{match.group(1)}: {message}")
+
+          patterns = {
+              "error": r"error:|e: file://|FAILED|Caused by",
+              "warning": r"^(w:|warning:)|: warning:",
+              "notice": r"^> Task :app:(assemble|compile|test)",
+          }
+          for kind, pattern in patterns.items():
+              seen = set()
+              for line in log_text.splitlines():
+                  stripped = line.strip()
+                  if not re.search(pattern, stripped) or stripped in seen:
+                      continue
+                  seen.add(stripped)
+                  ann(kind, stripped)
+                  if len(seen) >= (18 if kind == "error" else 8):
+                      break
+          EOF
+
+      - name: Summarise build
+        if: always()
+        continue-on-error: true
+        run: |
+          {
+            echo '### Build failed'
+            echo
+            echo '```'
+            grep -nE "error:|e: file:|FAILED|What went wrong|Caused by|> Task" build.log | head -60 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload compiled resource dump
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: resources-failure
+          path: |
+            app/build/intermediates/incremental/debug/mergeDebugResources/**
+            app/build/intermediates/merged_res/debug/**
+            app/build/intermediates/packaged_res/debug/**
+          if-no-files-found: ignore
+          retention-days: 3
+
+      # The artifact download host is blocked on some networks. These steps let
+      # a maintainer confirm the APK contents through the annotations channel.
+      - name: Inspect APK
+        if: success()
+        continue-on-error: true
+        run: |
+          set -e
+          apk=$(find app/build/outputs/apk/debug -name "*.apk" | head -1)
+          ls -l "$apk"
+          unzip -l "$apk" | tail -1
+          for entry in classes.dex resources.arsc AndroidManifest.xml \
+                       res/xml/backup_rules.xml res/xml/data_extraction_rules.xml; do
+            if unzip -l "$apk" "$entry" >/dev/null 2>&1; then
+              echo "::notice title=apk::$entry present"
+            else
+              echo "::warning title=apk::$entry missing"
+            fi
+          done
+          unzip -l "$apk" | grep -E "res/font|mipmap" | head -8 | \
+            while read -r size date time name; do
+              echo "::notice title=apk::$name ($size bytes)"
+            done
+
+      # Artifacts live on a blob host that some networks cannot reach, so the
+      # newest APK is also attached to a rolling prerelease with a stable URL:
+      # https://github.com/retrobit-dev/pokelauncher/releases/download/apk-latest/pokelauncher-debug.apk
+      - name: Publish APK as a release asset
+        if: success()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          apk=$(find app/build/outputs/apk/debug -name "*.apk" | head -1)
+          cp "$apk" pokelauncher-debug.apk
+          gh release view apk-latest >/dev/null 2>&1 || \
+            gh release create apk-latest \
+              --title "APK debug terbaru" \
+              --notes "APK debug yang dibangun otomatis oleh GitHub Actions dari branch kerja. Unduh app-debug, pasang di tablet, lalu jadikan home default." \
+              --prerelease
+          gh release upload apk-latest pokelauncher-debug.apk --clobber
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v5
+        with:
+          name: pokelauncher-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload test report on failure
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: test-report
+          path: |
+            app/build/reports/tests/**
+            app/build/reports/lint-results-*.html
+          if-no-files-found: ignore
+          retention-days: 7

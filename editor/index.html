@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Johto Map Editor</title>
+<link rel="stylesheet" href="/editor/app.css">
+</head>
+<body>
+
+<!-- the map: a full-screen grid of 16x16 cells drawn on canvas -->
+<canvas id="map" aria-label="Peta Johto"></canvas>
+
+<!-- status strip: tool, cursor cell and map size -->
+<div id="hud">
+  <span id="hud-tool">Pensil</span>
+  <span class="sep">·</span>
+  <span id="hud-cell">0, 0</span>
+  <span class="sep">·</span>
+  <span id="hud-size">–</span>
+</div>
+
+<!-- tools -->
+<div id="tools">
+  <button id="tool-pencil" class="tool active" title="Gambar (B)" data-key="b">✎</button>
+  <button id="tool-erase" class="tool" title="Hapus (E)" data-key="e">⌫</button>
+  <button id="tool-pick" class="tool" title="Ambil tile (I)" data-key="i">◉</button>
+  <button id="tool-fill" class="tool" title="Isi area (G)" data-key="g">▨</button>
+  <span class="divider" aria-hidden="true"></span>
+  <button id="view-fit" class="tool" title="Muat seluruh peta (F)" data-key="f">⤢</button>
+  <button id="view-1x" class="tool" title="Sel 16x16 px (1)" data-key="1">1:1</button>
+  <button id="add" class="add" title="Tambah objek / tile" aria-label="Tambah objek">+</button>
+</div>
+
+<!-- tileset drawer, opened by the + button -->
+<aside id="drawer" hidden aria-label="Tileset">
+  <header>
+    <h1>TILESET</h1>
+    <button id="close" title="Tutup (Esc)" aria-label="Tutup">×</button>
+  </header>
+  <div id="tabs" role="tablist"></div>
+  <div id="palette"></div>
+  <footer id="drawer-info">Pilih tile, lalu klik peta.</footer>
+</aside>
+
+<div id="toast" hidden></div>
+
+<script src="/editor/app.js"></script>
+</body>
+</html>

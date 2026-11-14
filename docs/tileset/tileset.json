@@ -1,0 +1,260 @@
+{
+  "tile": 16,
+  "columns": 8,
+  "atlas": "johto-tileset.png",
+  "tiles": {
+    "grass": {
+      "x": 0,
+      "y": 0,
+      "w": 16,
+      "h": 16,
+      "solid": false,
+      "layer": "ground"
+    },
+    "grass_detail": {
+      "x": 16,
+      "y": 0,
+      "w": 16,
+      "h": 16,
+      "solid": false,
+      "layer": "ground"
+    },
+    "grass_dark": {
+      "x": 32,
+      "y": 0,
+      "w": 16,
+      "h": 16,
+      "solid": false,
+      "layer": "ground"
+    },
+    "path": {
+      "x": 48,
+      "y": 0,
+      "w": 16,
+      "h": 16,
+      "solid": false,
+      "layer": "ground"
+    },
+    "path_n": {
+      "x": 64,
+      "y": 0,
+      "w": 16,
+      "h": 16,
+      "solid": false,
+      "layer": "ground"
+    },
+    "path_s": {
+      "x": 80,
+      "y": 0,
+      "w": 16,
+      "h": 16,
+      "solid": false,
+      "layer": "ground"
+    },
+    "path_w": {
+      "x": 96,
+      "y": 0,
+      "w": 16,
+      "h": 16,
+      "solid": false,
+      "layer": "ground"
+    },
+    "path_e": {
+      "x": 112,
+      "y": 0,
+      "w": 16,
+      "h": 16,
+      "solid": false,
+      "layer": "ground"
+    },
+    "water": {
+      "x": 0,
+      "y": 16,
+      "w": 16,
+      "h": 16,
+      "solid": true,
+      "layer": "ground"
+    },
+    "water_shallow": {
+      "x": 16,
+      "y": 16,
+      "w": 16,
+      "h": 16,
+      "solid": true,
+      "layer": "ground"
+    },
+    "water_foam": {
+      "x": 32,
+      "y": 16,
+      "w": 16,
+      "h": 16,
+      "solid": true,
+      "layer": "ground"
+    },
+    "cliff_face": {
+      "x": 48,
+      "y": 16,
+      "w": 16,
+      "h": 16,
+      "solid": true,
+      "layer": "ground"
+    },
+    "cliff_top": {
+      "x": 64,
+      "y": 16,
+      "w": 16,
+      "h": 16,
+      "solid": true,
+      "layer": "ground"
+    },
+    "flowers_gold": {
+      "x": 80,
+      "y": 16,
+      "w": 16,
+      "h": 16,
+      "solid": false,
+      "layer": "object"
+    },
+    "flowers_red": {
+      "x": 96,
+      "y": 16,
+      "w": 16,
+      "h": 16,
+      "solid": false,
+      "layer": "object"
+    },
+    "flowers_white": {
+      "x": 112,
+      "y": 16,
+      "w": 16,
+      "h": 16,
+      "solid": false,
+      "layer": "object"
+    },
+    "bush": {
+      "x": 0,
+      "y": 32,
+      "w": 16,
+      "h": 16,
+      "solid": true,
+      "layer": "object"
+    },
+    "rock": {
+      "x": 16,
+      "y": 32,
+      "w": 16,
+      "h": 16,
+      "solid": true,
+      "layer": "object"
+    },
+    "fence_h": {
+      "x": 32,
+      "y": 32,
+      "w": 16,
+      "h": 16,
+      "solid": true,
+      "layer": "object"
+    },
+    "fence_v": {
+      "x": 48,
+      "y": 32,
+      "w": 16,
+      "h": 16,
+      "solid": true,
+      "layer": "object"
+    },
+    "sign": {
+      "x": 64,
+      "y": 32,
+      "w": 16,
+      "h": 16,
+      "solid": true,
+      "layer": "object"
+    },
+    "stairs": {
+      "x": 80,
+      "y": 32,
+      "w": 16,
+      "h": 16,
+      "solid": false,
+      "layer": "object"
+    },
+    "machine_left": {
+      "x": 96,
+      "y": 32,
+      "w": 16,
+      "h": 16,
+      "solid": true,
+      "layer": "object"
+    },
+    "machine_right": {
+      "x": 112,
+      "y": 32,
+      "w": 16,
+      "h": 16,
+      "solid": true,
+      "layer": "object"
+    },
+    "wall_plain": {
+      "x": 0,
+      "y": 48,
+      "w": 16,
+      "h": 16,
+      "solid": true,
+      "layer": "building"
+    },
+    "wall_window": {
+      "x": 16,
+      "y": 48,
+      "w": 16,
+      "h": 16,
+      "solid": true,
+      "layer": "building"
+    },
+    "wall_door": {
+      "x": 32,
+      "y": 48,
+      "w": 16,
+      "h": 16,
+      "solid": true,
+      "layer": "building"
+    },
+    "roof": {
+      "x": 48,
+      "y": 48,
+      "w": 16,
+      "h": 16,
+      "solid": true,
+      "layer": "building"
+    },
+    "roof_left": {
+      "x": 64,
+      "y": 48,
+      "w": 16,
+      "h": 16,
+      "solid": true,
+      "layer": "building"
+    },
+    "roof_right": {
+      "x": 80,
+      "y": 48,
+      "w": 16,
+      "h": 16,
+      "solid": true,
+      "layer": "building"
+    },
+    "tree": {
+      "x": 0,
+      "y": 64,
+      "w": 32,
+      "h": 32,
+      "solid": true,
+      "layer": "object",
+      "footprint": [
+        2,
+        2
+      ]
+    }
+  },
+  "generated_by": "tools/tileset/build.py"
+}

@@ -1,0 +1,25 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+/app/build
+*.apk
+*.aab
+*.keystore
+!debug.keystore
+
+# python bytecode from the preview tooling
+__pycache__/
+*.pyc
+
+# reference photos pulled in for measurement (not part of the app)
+/image-search
+
+# the editor's working document, saved by tools/preview_server.py
+/docs/tileset/map.json
+/docs/tileset/map.json.bak
