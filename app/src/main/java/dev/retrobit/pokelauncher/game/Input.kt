@@ -42,5 +42,30 @@ object TouchInput {
         return current
     }
 
-    val STEPS = intArrayOf(1, 2, 3, 4, 6)
+    /**
+     * Zoom levels, all whole multiples so a tile stays an exact pixel count.
+     *
+     * 8 and 12 exist for the tablet panel: at 8x a cell is 128 px and the
+     * player 128 px tall, at 12x they are 192 px. The default lives on this
+     * list, and `defaultStep()` asserts that at startup: a default that is not
+     * a step used to break zoom-out entirely (indexOf returned -1, which is
+     * why the old code coerced it to 0).
+     */
+    val STEPS = intArrayOf(1, 2, 3, 4, 6, 8, 10, 12)
+
+    /** Index of the default zoom, or an error naming the mismatch. */
+    fun defaultIndex(default: Int = DEFAULT): Int {
+        val index = STEPS.indexOf(default)
+        require(index >= 0) { "zoom default $default is not one of ${STEPS.toList()}" }
+        return index
+    }
+
+    /**
+     * The zoom the app opens at: 10x.
+     *
+     * 16x10 cells visible, a 160 px player (10% of the panel height). 12x was
+     * tried first and is too close: the road alone filled a third of the
+     * screen and there was nothing left to read around the player.
+     */
+    const val DEFAULT = 10
 }

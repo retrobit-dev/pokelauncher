@@ -15,6 +15,7 @@ import dev.retrobit.pokelauncher.game.GameMap
 import dev.retrobit.pokelauncher.game.MapJson
 import dev.retrobit.pokelauncher.game.Pathfinder
 import dev.retrobit.pokelauncher.game.TileSet
+import dev.retrobit.pokelauncher.game.TouchInput
 import dev.retrobit.pokelauncher.game.World
 import dev.retrobit.pokelauncher.game.WorldState
 import dev.retrobit.pokelauncher.data.WorldStore
@@ -62,6 +63,10 @@ class GameViewModel(context: Context) : ViewModel() {
         get() = TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60_000
 
     init {
+        // Fails at startup, not at the first pinch, if the default drifts out
+        // of the step list. This is the bug that shipped with the 8x default.
+        TouchInput.defaultIndex()
+
         val world = World(map, tiles)
         val clockAtLaunch = currentClock()
         restoreWorld(world)
@@ -71,8 +76,8 @@ class GameViewModel(context: Context) : ViewModel() {
         // the rig clamps against a window four times too wide and the first
         // render lands off-centre until Compose reports the real panel size.
         val rig = CameraRig(
-            viewWidth = PANEL_WIDTH_PX / DEFAULT_SCALE,
-            viewHeight = PANEL_HEIGHT_PX / DEFAULT_SCALE,
+            viewWidth = PANEL_WIDTH_PX / TouchInput.DEFAULT,
+            viewHeight = PANEL_HEIGHT_PX / TouchInput.DEFAULT,
             mapWidth = map.widthPx,
             mapHeight = map.heightPx,
             startX = world.playerX * GameMap.TILE,
@@ -95,11 +100,11 @@ class GameViewModel(context: Context) : ViewModel() {
                 mapWidth = map.widthPx,
                 mapHeight = map.heightPx,
             ),
-            // 8x: 20x12 cells on the panel, so the player is 128 px tall and
-            // the map is four screens wide, which is what makes the follow
-            // camera visible at all. 3x fitted the whole village on screen and
-            // read as a map, not as a place.
-            scale = DEFAULT_SCALE,
+            // 12x: 13x8 cells on the panel and a 192 px player, which is the
+            // framing HeartGold uses (a 32 px hero on a 192 px screen). The
+            // default must be one of TouchInput.STEPS; defaultIndex() throws
+            // otherwise instead of silently landing on the wrong zoom.
+            scale = TouchInput.DEFAULT,
         )
         startSurvivalLoop()
         startCameraLoop()
@@ -436,8 +441,12 @@ class GameViewModel(context: Context) : ViewModel() {
 
     fun zoomBy(step: Int) {
         val current = _state.value
-        val steps = dev.retrobit.pokelauncher.game.TouchInput.STEPS
-        val index = steps.indexOf(current.scale).coerceAtLeast(0) + step
+        val steps = TouchInput.STEPS
+        // The index is found by value, not by assuming the current scale is a
+        // step: a default that was missing from the list made indexOf return
+        // -1, and coercing that to 0 meant "zoom out" jumped to 1x.
+        val here = steps.indexOf(current.scale)
+        val index = (if (here >= 0) here else TouchInput.defaultIndex()) + step
         val next = steps[index.coerceIn(steps.indices)]
         // A zoomed panel shows fewer map pixels, so the window shrinks with it.
         rig?.resize(
@@ -488,17 +497,7 @@ class GameViewModel(context: Context) : ViewModel() {
     companion object {
         const val STEP_MILLIS = 140L
 
-        /**
-         * Default zoom, one of `TouchInput.STEPS`.
-         *
-         * Chosen from the panel: at 8x a cell is 128 px, the player is 128 px
-         * tall (8% of the screen height), and 20x12 cells are visible. The map
-         * is then 4x4 screens, so walking always moves the camera. 3x showed
-         * 53x33 cells and the whole village at once.
-         */
-        const val DEFAULT_SCALE = 8
-
-        /** The MatePad Mini panel, in pixels: the rig's viewport before Compose reports it. */
+/** The MatePad Mini panel, in pixels: the rig's viewport before Compose reports it. */
         const val PANEL_WIDTH_PX = 2560
         const val PANEL_HEIGHT_PX = 1600
 

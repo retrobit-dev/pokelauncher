@@ -5,7 +5,8 @@
     python3 tools/preview_server.py --port 9000
 
 Routes
-  /                     the MatePad Mini render, and nothing else
+  /                     the tablet, with mode tabs (gameplay / map editor)
+  /?mode=editor         the same page, opened straight into the editor
   /device               the same render (kept for old links)
   /editor               the map editor (grid of 16x16 tiles filling the screen)
   /editor/app.js        editor logic
@@ -62,12 +63,32 @@ DEVICE_PAGE = """<!DOCTYPE html>
   /* The page is the bright margin around the device. The render already carries
      that same sky-blue border, so the image sits on the page with no seam. */
   html, body { margin: 0; height: 100%; background: #bfe3f2; }
+  :root {
+    --pad: clamp(4px, 1.4vw, 18px);
+    --ink: #2c3a40;
+    --sky-deep: #9fd2e6;
+    --paper: #fbf3dc;
+    --btn: #f7e7bd;
+    --btn-on: #2c3a40;
+  }
   body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--pad);
+    padding: var(--pad);
+    box-sizing: border-box;
+    min-height: 100dvh;
+  }
+
+  /* The device shot keeps the space it can have, the tabs sit under it. */
+  #stage {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
     display: grid;
     place-items: center;
-    padding: clamp(4px, 1.5vw, 18px);
   }
-  :root { --pad: clamp(4px, 1.5vw, 18px); }
 
   /*
    * A 2772px render on a ~1400px pane is a 2x downscale, and a browser's
@@ -81,20 +102,90 @@ DEVICE_PAGE = """<!DOCTYPE html>
    */
   img {
     display: block;
-    width: min(100%, calc((100dvh - 2 * var(--pad)) * 2772 / 1812));
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
     height: auto;
     image-rendering: pixelated;
     image-rendering: crisp-edges; /* Firefox */
   }
-  @media (min-width: 1900px) {
-    /* Plenty of room: never blow the shot up past 1:1, it only gets softer. */
-    img { width: min(100%, 2772px); }
+
+  /* ---------------------------------------------------------- the tabs
+     Two modes, side by side under the tablet. Not a <select>: the point is to
+     see both options at once. aria-pressed says which one is on, so the state
+     is readable by a screen reader and not only by colour. */
+  nav {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
   }
+  nav button {
+    font: 600 15px/1 ui-sans-serif, system-ui, sans-serif;
+    letter-spacing: .02em;
+    color: var(--ink);
+    background: var(--btn);
+    border: 2px solid var(--ink);
+    border-radius: 999px;
+    padding: 11px 22px;
+    cursor: pointer;
+    min-height: 44px;            /* comfortable tap target */
+  }
+  nav button[aria-pressed="true"] {
+    background: var(--btn-on);
+    color: var(--paper);
+  }
+  nav button:focus-visible { outline: 3px solid #1f6f8b; outline-offset: 3px; }
+
+  /* The editor replaces the tablet, maximised: it needs the room. */
+  body[data-mode="editor"] #stage { place-items: stretch; }
+  body[data-mode="editor"] img { display: none; }
+  #editor { display: none; width: 100%; height: 100%; border: 0; background: var(--paper); }
+  body[data-mode="editor"] #editor { display: block; }
 </style>
 </head>
-<body>
-<img src="/docs/__SHOT__?v=__STAMP__" alt="PokeLauncher di MatePad Mini"
-     width="2772" height="1812">
+<body data-mode="game">
+  <div id="stage">
+    <img src="/docs/__SHOT__?v=__STAMP__" alt="PokeLauncher di MatePad Mini"
+         width="2772" height="1812">
+    <iframe id="editor" src="/editor" title="Editor peta" loading="lazy"></iframe>
+  </div>
+
+  <nav aria-label="Mode tampilan">
+    <!-- href carries the state so a reload or a shared link keeps the mode -->
+    <button id="mode-game" aria-pressed="true">Mode gameplay</button>
+    <button id="mode-editor" aria-pressed="false">Mode map editor</button>
+  </nav>
+
+<script>
+  (function () {
+    var params = new URLSearchParams(location.search);
+    var body = document.body;
+    var gameBtn = document.getElementById('mode-game');
+    var editorBtn = document.getElementById('mode-editor');
+
+    function show(mode, updateUrl) {
+      body.dataset.mode = mode;
+      gameBtn.setAttribute('aria-pressed', String(mode === 'game'));
+      editorBtn.setAttribute('aria-pressed', String(mode === 'editor'));
+      if (updateUrl) {
+        // replaceState, not pushState: switching modes is not navigation, and
+        // the back button should leave the preview, not walk through tabs.
+        var url = new URL(location.href);
+        if (mode === 'editor') url.searchParams.set('mode', 'editor');
+        else url.searchParams.delete('mode');
+        history.replaceState(null, '', url);
+      }
+    }
+
+    gameBtn.addEventListener('click', function () { show('game', true); });
+    editorBtn.addEventListener('click', function () { show('editor', true); });
+
+    // Deep link: /?mode=editor opens straight into the editor.
+    if (params.get('mode') === 'editor') show('editor', false);
+  })();
+</script>
 </body>
 </html>
 """

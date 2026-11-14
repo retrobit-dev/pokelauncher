@@ -851,6 +851,53 @@ def check_player_sprite() -> None:
             fail(f"PlayerSprite.kt should declare {needle!r}: {why}")
 
 
+def check_zoom_agreement() -> None:
+    """The app's default zoom and every tool that renders it must match.
+
+    The screenshot is the only thing a reviewer sees, so a render drawn at a
+    different zoom than the app opens at is a convincing lie. This has already
+    gone wrong twice: a default (8) missing from the step list, and a mock that
+    forced the whole 80x50 map into the panel.
+    """
+    import re
+
+    def read(path):
+        with open(os.path.join(ROOT, path), encoding="utf-8") as handle:
+            return handle.read()
+
+    steps_text = read("app/src/main/java/dev/retrobit/pokelauncher/game/Input.kt")
+    match = re.search(r"val STEPS = intArrayOf\(([^)]*)\)", steps_text)
+    if not match:
+        fail("Input.kt: could not find the STEPS list")
+        return
+    steps = [int(v.strip()) for v in match.group(1).split(",") if v.strip()]
+
+    default_match = re.search(r"const val DEFAULT = (\d+)", steps_text)
+    if not default_match:
+        fail("Input.kt: DEFAULT zoom is not declared")
+        return
+    default = int(default_match.group(1))
+
+    if default not in steps:
+        fail(f"the default zoom {default} is not one of the steps {steps}; "
+             "zoom-out then cannot find the current scale")
+
+    # every tool that draws the world at a zoom must agree with the app
+    for path, pattern, why in (
+        ("tools/mock_ingame.py", r"DEFAULT_ZOOM = (\d+)",
+         "the mock renders what the tablet shows"),
+    ):
+        if not os.path.exists(os.path.join(ROOT, path)):
+            continue
+        found = re.search(pattern, read(path))
+        if not found:
+            fail(f"{path}: no DEFAULT_ZOOM found")
+            continue
+        if int(found.group(1)) != default:
+            fail(f"{path} renders at {found.group(1)}x but the app opens at {default}x "
+                 f"({why})")
+
+
 def main() -> int:
     check_gradle()
     check_kotlin_call_sites()
@@ -865,6 +912,7 @@ def main() -> int:
     check_tileset()
     check_game_assets()
     check_player_sprite()
+    check_zoom_agreement()
 
     for problem in problems:
         print("FAIL", problem)

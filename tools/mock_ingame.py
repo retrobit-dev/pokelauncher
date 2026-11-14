@@ -112,8 +112,9 @@ if NIGHT:
 # What the panel actually shows: the camera window at the app's default zoom,
 # not the whole map shrunk to fit. Rendering all 80x50 cells at 2x made the
 # world look tiny and was the reason the tablet shot read as a map rather than
-# a place. DEFAULT_ZOOM must match GameViewModel.DEFAULT_SCALE.
-DEFAULT_ZOOM = 8
+# a place. DEFAULT_ZOOM must match TouchInput.DEFAULT, and
+# tools/verify.py fails if the two drift apart.
+DEFAULT_ZOOM = 10
 PANEL_W, PANEL_H = 2560, 1600
 Z = DEFAULT_ZOOM
 view_w, view_h = PANEL_W // Z, PANEL_H // Z      # 320 x 200 map px

@@ -135,11 +135,17 @@ plus pohon 32×32). Untuk menambah tile, atlas digandakan ke 256×256 px (16×16
 | 3× | 48 px | 3,6 mm | 53 × 33 | 3 % |
 | 4× | 64 px | 4,7 mm | 40 × 25 | 4 % |
 | 6× | 96 px | 7,1 mm | 26 × 16 | 6 % |
-| **8×** | **128 px** | **9,5 mm** | **20 × 12** | **8 %** |
+| 8× | 128 px | 9,5 mm | 20 × 12 | 8 % |
+| **10×** | **160 px** | **11,9 mm** | **16 × 10** | **10 %** |
+| 12× | 192 px | 14,3 mm | 13 × 8 | 12 % |
 
-Tampilan default **8×**. Di 3× seluruh desa muat di satu layar dan pemain hanya 3 % tinggi
-layar, jadi dunia terbaca sebagai peta, bukan sebagai tempat. Di 8× pemain 128 px, tile 128 px,
-dan petanya 4 × 4 layar — cukup lebar sehingga kamera benar-benar bergerak saat berjalan.
+Tampilan default **10×**: pemain 160 px, 16 × 10 sel terlihat. Di 3× seluruh desa muat di satu
+layar dan pemain hanya 3 % tinggi layar, jadi dunia terbaca sebagai peta, bukan sebagai tempat.
+12× sempat dicoba dan terlalu dekat — jalan saja memenuhi sepertiga layar.
+
+Zoom yang tersedia: 1, 2, 3, 4, 6, 8, 10, 12 (`TouchInput.STEPS`). Default **wajib** salah satu
+dari daftar itu; `tools/verify.py` gagal kalau tidak (pernah terjadi: default 8 tidak ada di
+daftar, sehingga zoom-out melompat ke 1×).
 
 Semua skala bilangan bulat supaya piksel tetap tajam di 343 ppi; skala pecahan seperti 2,5×
 akan membuat tile 1 px lebih lebar di sini dan lebih sempit di sana.
@@ -302,6 +308,16 @@ python3 tools/preview_server.py --port 9000
 | `/docs/tileset/map.json` | Peta kerja editor; jika belum ada, server menyajikan peta bawaan APK. |
 
 Server hanya menyajikan rute di atas; sisa repo tidak bisa diakses.
+
+**Dua mode di bawah tablet.** Halaman `/` punya dua tombol di bawah perangkat:
+
+| Tombol | Isi |
+| --- | --- |
+| **Mode gameplay** | Render tablet seperti di atas (default). |
+| **Mode map editor** | Editor peta memenuhi layar, siap dipakai. |
+
+Pilihannya disimpan di URL (`/?mode=editor`), jadi tautan atau muat ulang tetap membuka mode yang
+sama. Editor juga tetap bisa dibuka langsung di `/editor`.
 
 **Layar berisi lapangan.** `python3 tools/mock_ingame.py --field` menggambar peta + pemain tanpa
 HUD (itu yang dipasang ke panel), lalu `python3 tools/render_tablet.py` membingkainya.
