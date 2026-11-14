@@ -13,6 +13,8 @@ Routes
   /editor/app.css       editor styles
   /docs/tileset/*       the tileset atlas and its index, read by the palette
   /api/map              the current map, saved by the editor
+  /api/publish          copies that map to the game's assets, so gameplay
+                        mode shows what was drawn (the editor does this on save)
                         (GET map.json falls back to the map shipped in the APK
                         when no document has been saved yet)
   /docs/preview-tablet.png   the device render
@@ -34,10 +36,16 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOCS = os.path.join(ROOT, "docs")
 EDITOR = os.path.join(ROOT, "editor")
 SHOT = "preview-tablet.png"
+FIELD = os.path.join(DOCS, "editor", "field.png")
 
 # The map the editor works on. Kept out of git: it is the artist's document,
 # and the game will get its own export format later.
 MAP_PATH = os.path.join(ROOT, "docs", "tileset", "map.json")
+
+# What the game actually loads. `Mode gameplay` must show the map drawn in the
+# editor, so publishing copies the document here; the two files are different
+# on purpose, because one is a working document and the other ships in the APK.
+GAME_MAP_PATH = os.path.join(ROOT, "app", "src", "main", "assets", "tileset", "map.json")
 
 def _stamp() -> str:
     """The render's mtime, so a page load always asks for the current bitmap.
@@ -138,6 +146,19 @@ DEVICE_PAGE = """<!DOCTYPE html>
   }
   nav button:focus-visible { outline: 3px solid #1f6f8b; outline-offset: 3px; }
 
+  /* Rendering the tablet takes ~40 s. Say so, instead of looking frozen. */
+  #render-state {
+    align-self: center;
+    font: 500 13px/1 ui-sans-serif, system-ui, sans-serif;
+    color: var(--ink);
+    background: rgba(255, 255, 255, .55);
+    border-radius: 999px;
+    padding: 6px 12px;
+    min-height: 0;
+  }
+  #render-state:empty { display: none; }
+  #render-state[data-state="rendering"]::before { content: "⟳ Menyiapkan tampilan dari peta editor…"; }
+
   /* The editor replaces the tablet, maximised: it needs the room. */
   body[data-mode="editor"] #stage { place-items: stretch; }
   body[data-mode="editor"] img { display: none; }
@@ -146,17 +167,19 @@ DEVICE_PAGE = """<!DOCTYPE html>
 </style>
 </head>
 <body data-mode="game">
+  <!-- The mode tabs sit above the tablet: they switch what the screen shows,
+       so they belong on the chrome, not inside the device. -->
+  <nav aria-label="Mode tampilan">
+    <button id="mode-game" aria-pressed="true">Mode gameplay</button>
+    <button id="mode-editor" aria-pressed="false">Mode map editor</button>
+    <span id="render-state" data-state="__RENDERING__" role="status"></span>
+  </nav>
+
   <div id="stage">
     <img src="/docs/__SHOT__?v=__STAMP__" alt="PokeLauncher di MatePad Mini"
          width="2772" height="1812">
     <iframe id="editor" src="/editor" title="Editor peta" loading="lazy"></iframe>
   </div>
-
-  <nav aria-label="Mode tampilan">
-    <!-- href carries the state so a reload or a shared link keeps the mode -->
-    <button id="mode-game" aria-pressed="true">Mode gameplay</button>
-    <button id="mode-editor" aria-pressed="false">Mode map editor</button>
-  </nav>
 
 <script>
   (function () {
@@ -184,6 +207,15 @@ DEVICE_PAGE = """<!DOCTYPE html>
 
     // Deep link: /?mode=editor opens straight into the editor.
     if (params.get('mode') === 'editor') show('editor', false);
+
+    // A background render was started for this load: come back once for the
+    // finished shot instead of leaving a half-truth on screen. One reload, not
+    // a poll loop, and never while the editor is open.
+    if (document.getElementById('render-state').dataset.state === 'rendering') {
+      setTimeout(function () {
+        if (document.body.dataset.mode === 'game') location.reload();
+      }, 42000);
+    }
   })();
 </script>
 </body>
@@ -194,6 +226,11 @@ DEVICE_PAGE = """<!DOCTYPE html>
 class PreviewHandler(http.server.BaseHTTPRequestHandler):
     """Serves the device preview, the editor, the tileset and the render."""
 
+    # A re-render takes tens of seconds, so it is shared state: two page loads
+    # must not start two renders, and the tabs show whether one is running.
+    _render_lock = __import__("threading").Lock()
+    _rendering = False
+
     # -- routing -------------------------------------------------------
     def do_GET(self) -> None:  # noqa: N802 - stdlib naming
         path = urllib.parse.urlsplit(self.path).path
@@ -202,9 +239,11 @@ class PreviewHandler(http.server.BaseHTTPRequestHandler):
             # The front page is the device, not the editor: the preview exists
             # to show what the app looks like, and the editor is a tool you go
             # looking for. /device stays as an alias so old links keep working.
+            self.refresh_shot()
             page = (DEVICE_PAGE
                     .replace("__SHOT__", SHOT)
-                    .replace("__STAMP__", _stamp()))
+                    .replace("__STAMP__", _stamp())
+                    .replace("__RENDERING__", self.render_state()))
             self.respond(page.encode("utf-8"), "text/html; charset=utf-8")
             return
         if path in ("/editor", "/editor/", "/editor/index.html"):
@@ -222,11 +261,13 @@ class PreviewHandler(http.server.BaseHTTPRequestHandler):
             if name in ("johto-tileset.png", "tileset.json", "map.json"):
                 kind = "image/png" if name.endswith(".png") else "application/json"
                 target = os.path.join(DOCS, "tileset", name)
-                if name == "map.json" and not os.path.exists(target):
-                    # No working document yet: open the map the app ships, so the
-                    # editor starts from the real village instead of a blank lawn.
-                    target = os.path.join(ROOT, "app", "src", "main", "assets",
-                                          "tileset", "map.json")
+                if name == "map.json":
+                    # The editor's working document wins: gameplay mode has to
+                    # show the map that was drawn, not the one frozen into the
+                    # APK. Falling back to the asset keeps a fresh clone working
+                    # before anything has been saved.
+                    if not os.path.exists(target):
+                        target = GAME_MAP_PATH
                 self.send_file(target, kind)
                 return
         if path == "/docs/" + SHOT:
@@ -237,6 +278,9 @@ class PreviewHandler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802 - stdlib naming
         path = urllib.parse.urlsplit(self.path).path
+        if path == "/api/publish":
+            self.publish_map()
+            return
         if path != "/api/map":
             self.send_error(404, "Not found")
             return
@@ -265,6 +309,96 @@ class PreviewHandler(http.server.BaseHTTPRequestHandler):
             handle.write("\n")
         self.respond(json.dumps({"ok": True, "bytes": len(body)}).encode("utf-8"),
                      "application/json")
+
+    def publish_map(self) -> None:
+        """Copies the editor's document to the map the game loads.
+
+        Two files, one purpose each: `docs/tileset/map.json` is the artist's
+        working document and stays out of git, `app/src/main/assets/...` is what
+        the APK ships. Saving in the editor must do both, or "gameplay uses the
+        editor's map" would be a claim rather than a fact.
+        """
+        if not os.path.exists(MAP_PATH):
+            self.respond(json.dumps({"ok": False, "error": "belum ada peta tersimpan"}).encode("utf-8"),
+                         "application/json")
+            return
+        try:
+            with open(MAP_PATH, encoding="utf-8") as handle:
+                document = json.load(handle)
+            # Round-trip through the parser the app uses: a document that the
+            # game cannot read must fail here, not as a blank screen later.
+            if not isinstance(document.get("cells"), dict):
+                raise ValueError("peta tidak punya objek 'cells'")
+            if not isinstance(document.get("cols"), int) or not isinstance(document.get("rows"), int):
+                raise ValueError("peta tidak punya cols/rows")
+            os.makedirs(os.path.dirname(GAME_MAP_PATH), exist_ok=True)
+            with open(GAME_MAP_PATH, "w", encoding="utf-8") as handle:
+                json.dump(document, handle)
+                handle.write("\n")
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            self.respond(json.dumps({"ok": False, "error": str(error)}).encode("utf-8"),
+                         "application/json")
+            return
+        self.respond(json.dumps({"ok": True}).encode("utf-8"), "application/json")
+
+    def refresh_shot(self) -> None:
+        """Re-renders the tablet shot when the map it was drawn from changed.
+
+        `Mode gameplay` has to show the map from the editor. The render is a
+        Python script, so there are two honest options: ask the user to run it,
+        or run it here. Running it here is what makes the promise true without a
+        second terminal.
+
+        It runs *in the background*, behind a class-wide lock: a full render is
+        ~40 s on this panel, and blocking the page request for that long looks
+        exactly like a broken preview. The page serves the current shot now and
+        the next load serves the new one; the tabs carry the re-render state so
+        the wait is visible instead of mysterious.
+        """
+        source = MAP_PATH if os.path.exists(MAP_PATH) else GAME_MAP_PATH
+        try:
+            newest = max(os.path.getmtime(source), os.path.getmtime(FIELD))
+            shot = os.path.join(DOCS, SHOT)
+            if os.path.exists(shot) and os.path.getmtime(shot) >= newest:
+                with PreviewHandler._render_lock:
+                    PreviewHandler._rendering = False
+                return
+        except OSError:
+            return
+
+        with PreviewHandler._render_lock:
+            if PreviewHandler._rendering:
+                return
+            PreviewHandler._rendering = True
+
+        import subprocess
+        import threading
+
+        tools = os.path.join(ROOT, "tools")
+
+        def work() -> None:
+            try:
+                for command in (
+                    [sys.executable, os.path.join(tools, "mock_ingame.py"), "--field"],
+                    [sys.executable, os.path.join(tools, "render_tablet.py")],
+                ):
+                    subprocess.run(command, cwd=ROOT, check=True,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                                   timeout=300)
+            except (subprocess.SubprocessError, OSError):
+                # A failed re-render must not take the preview down: the old
+                # shot is still a better answer than an error page.
+                pass
+            finally:
+                with PreviewHandler._render_lock:
+                    PreviewHandler._rendering = False
+
+        threading.Thread(target=work, daemon=True).start()
+
+    @classmethod
+    def render_state(cls) -> str:
+        with cls._render_lock:
+            return "rendering" if cls._rendering else "ready"
 
     # -- helpers -------------------------------------------------------
     def send_file(self, path: str, content_type: str) -> None:

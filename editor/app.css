@@ -8,6 +8,8 @@
   --red: #c53a2d;
   --shadow: 0 8px 22px rgba(59, 47, 30, .22);
   --radius: 14px;
+  /* height of the tool bar: the map and the drawer both clear it */
+  --bar-h: 68px;
 }
 
 * { box-sizing: border-box; }
@@ -22,43 +24,57 @@ html, body {
   -webkit-font-smoothing: none;
 }
 
-/* ------------------------------------------------------------ the map */
+/* ------------------------------------------------------------ the map
+   The canvas is the window minus the tool bar: the bar is a sibling, not an
+   overlay, so nothing is ever painted underneath a floating button. */
 #map {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: var(--bar-h);
   width: 100%;
-  height: 100%;
+  height: calc(100% - var(--bar-h));
   display: block;
   touch-action: none;
   cursor: crosshair;
   image-rendering: pixelated;
 }
 
-/* ------------------------------------------------------------ hud */
+/* ------------------------------------------------------------ hud
+   Status lives inside the bar now, so it never sits on the drawing area. */
 #hud {
-  position: fixed;
-  top: 12px;
-  left: 12px;
-  padding: 7px 12px;
+  margin-left: auto;          /* pushed to the right end of the bar */
+  padding: 6px 12px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--paper) 92%, transparent);
-  box-shadow: var(--shadow);
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
   font-size: 12px;
   color: var(--ink-soft);
   pointer-events: none;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 #hud .sep { opacity: .45; margin: 0 4px; }
 #hud-tool { color: var(--ink); font-weight: 700; }
 
-/* ------------------------------------------------------------ tools */
+/* ------------------------------------------------------------ tools
+   A bar pinned to the bottom edge, full width, above nothing. */
 #tools {
   position: fixed;
-  top: 12px;
-  right: 12px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--bar-h);
   display: flex;
   gap: 8px;
   align-items: center;
+  padding: 0 12px;
+  background: var(--paper);
+  border-top: 2px solid var(--ink);
+  box-shadow: 0 -4px 16px rgba(59, 47, 30, .16);
+  z-index: 5;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 
 .tool, .add {
@@ -86,6 +102,14 @@ html, body {
 }
 
 #view-1x { font-size: 11px; letter-spacing: -.02em; }
+.tool.save {
+  width: auto;
+  padding: 0 16px;
+  font-size: 13px;
+  font-weight: 700;
+  background: var(--gold);
+}
+.tool.save:hover { background: #eecb68; }
 .divider {
   width: 1px;
   height: 28px;
@@ -114,8 +138,8 @@ html, body {
 #drawer {
   position: fixed;
   right: 12px;
-  top: 72px;
-  bottom: 12px;
+  top: 12px;
+  bottom: calc(var(--bar-h) + 12px);
   width: min(320px, calc(100vw - 24px));
   display: flex;
   flex-direction: column;
@@ -254,8 +278,13 @@ html, body {
   to   { opacity: 1; transform: translate(-50%, 0); }
 }
 
+/* ------------------------------------------------------------ toast
+   Sits above the bar, never on it. */
+#toast { bottom: calc(var(--bar-h) + 14px); }
+
 /* narrow screens: the drawer covers the map instead of squeezing beside it */
 @media (max-width: 620px) {
+  :root { --bar-h: 60px; }
   #drawer { left: 12px; width: auto; }
   #hud { display: none; }
 }

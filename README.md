@@ -309,7 +309,7 @@ python3 tools/preview_server.py --port 9000
 
 Server hanya menyajikan rute di atas; sisa repo tidak bisa diakses.
 
-**Dua mode di bawah tablet.** Halaman `/` punya dua tombol di bawah perangkat:
+**Dua mode, tombolnya di atas tablet.** Halaman `/` punya dua tombol di atas perangkat:
 
 | Tombol | Isi |
 | --- | --- |
@@ -318,6 +318,16 @@ Server hanya menyajikan rute di atas; sisa repo tidak bisa diakses.
 
 Pilihannya disimpan di URL (`/?mode=editor`), jadi tautan atau muat ulang tetap membuka mode yang
 sama. Editor juga tetap bisa dibuka langsung di `/editor`.
+
+**Gameplay memakai peta dari editor.** Menyimpan di editor (`Simpan`, atau `S`) melakukan dua hal:
+menulis dokumen kerja `docs/tileset/map.json` (tidak masuk git) dan menerbitkannya ke
+`app/src/main/assets/tileset/map.json` yang dimuat game. Jadi peta yang kamu lukis langsung muncul
+di Mode gameplay. Render tablet dibuat ulang di latar belakang saat peta berubah — sekitar 45 detik,
+karena itu tab menampilkan status *Menyiapkan tampilan dari peta editor…* alih-alih diam saja.
+
+**Alat editor ada di bawah peta.** Seluruh tombol editor (pensil, hapus, ambil, isi, simpan, muat
+peta, 1:1, `+` tileset) berada di bar yang menempel di tepi bawah, bukan melayang di atas kanvas.
+Kanvas peta tingginya `100% - --bar-h`, jadi tidak ada tombol yang menutupi area menggambar.
 
 **Layar berisi lapangan.** `python3 tools/mock_ingame.py --field` menggambar peta + pemain tanpa
 HUD (itu yang dipasang ke panel), lalu `python3 tools/render_tablet.py` membingkainya.

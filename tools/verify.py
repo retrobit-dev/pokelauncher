@@ -743,10 +743,28 @@ def check_editor() -> None:
     if "toggleDrawer()" not in js:
         fail("editor/app.js must open the tileset drawer from the + button")
 
-    # the stylesheet has to make the canvas fill the window
+    # The map owns the window except for the tool bar at the bottom: the bar is
+    # a sibling of the canvas, never an overlay, so no button is ever painted on
+    # top of the map. Both halves of that rule are checked, because getting one
+    # without the other is how a floating toolbar ended up covering the map.
     css = open(styles, encoding="utf-8").read()
-    if "position: fixed" not in css or "inset: 0" not in css:
-        fail("editor/app.css must pin the map canvas to the whole window")
+    if "position: fixed" not in css:
+        fail("editor/app.css must pin the map canvas")
+    if "bottom: var(--bar-h)" not in css:
+        fail("editor/app.css: the map must stop above the tool bar (--bar-h)")
+    if "bottom: 0;" not in css:
+        fail("editor/app.css: the tool bar must sit at the bottom edge")
+
+    # the bar must hold the editing tools, and the save button must be reachable
+    # from it: a bar you cannot save from is not the editor's control surface
+    if 'id="tools"' not in html:
+        fail("editor/index.html needs the tool bar")
+    for control in ('id="save"', 'id="tool-pencil"', 'id="add"'):
+        if control not in html:
+            fail(f"editor/index.html: the tool bar is missing {control}")
+    if "'/api/publish'" not in js:
+        fail("editor/app.js must publish the map to the game on save, "
+             "or Mode gameplay cannot show what was drawn")
 
 
 def check_game_assets() -> None:

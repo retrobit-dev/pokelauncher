@@ -26,7 +26,12 @@ OUT = next((a for a in sys.argv[1:] if a.endswith('.png')),
            os.path.join(HERE, '..', 'docs', 'editor', _default))
 
 meta=json.load(open(os.path.join(ROOT,'docs/tileset/tileset.json'))); T=meta['tiles']
-doc=json.load(open(os.path.join(ROOT,'app/src/main/assets/tileset/map.json')))
+# The editor's working document wins over the copy baked into the APK, so the
+# tablet shot shows the map that was actually drawn and saved. This mirrors the
+# rule tools/preview_server.py uses when it serves /docs/tileset/map.json.
+_working = os.path.join(ROOT,'docs/tileset/map.json')
+_map = _working if os.path.exists(_working) else os.path.join(ROOT,'app/src/main/assets/tileset/map.json')
+doc=json.load(open(_map))
 atlas=read_png(os.path.join(ROOT,'docs/tileset/johto-tileset.png'))
 PX=16
 WW,WH=doc['cols']*PX, doc['rows']*PX

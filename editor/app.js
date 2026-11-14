@@ -344,20 +344,36 @@ async function save() {
   const cellsArr = Object.entries(cells);
   if (!cellsArr.length && !confirm('Peta kosong. Tetap simpan?')) return;
 
+  const document = {
+    version: 1,
+    tile: TILE,
+    cols: state.cols,
+    rows: state.rows,
+    // The game reads this too, so the spawn has to survive a round trip. It
+    // is the cell the editor opens on, and the only place the player may
+    // start: without it the game falls back to its own default.
+    spawn: state.spawn || { x: Math.floor(state.cols / 2), y: Math.floor(state.rows / 2) },
+    cells: Object.fromEntries(cellsArr),
+  };
+
   try {
     const response = await fetch('/api/map', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        version: 1,
-        tile: TILE,
-        cols: state.cols,
-        rows: state.rows,
-        cells: Object.fromEntries(cellsArr),
-      }),
+      body: JSON.stringify(document),
     });
     const result = await response.json();
-    toast(result.ok ? `Tersimpan (${cellsArr.length} sel)` : `Gagal: ${result.error}`);
+    if (!result.ok) {
+      toast(`Gagal: ${result.error}`);
+      return;
+    }
+    // The game loads the map from the app assets, not from the editor's
+    // working file: publishing is what makes "Mode gameplay" show this map.
+    const published = await fetch('/api/publish', { method: 'POST' });
+    const report = await published.json();
+    toast(report.ok
+      ? `Tersimpan & dipakai game (${cellsArr.length} sel)`
+      : `Tersimpan, tapi game gagal dimuat: ${report.error}`);
   } catch (error) {
     toast('Gagal menyimpan: ' + error.message);
   }
@@ -371,6 +387,7 @@ async function loadMap() {
     state.loadedMap = true;
     state.cols = doc.cols || DEFAULT_COLS;
     state.rows = doc.rows || DEFAULT_ROWS;
+    state.spawn = doc.spawn || null;
     state.cells.clear();
     for (const [xy, value] of Object.entries(doc.cells || {})) {
       // current format: {ground,object,building}; older files: one {name,layer}
@@ -532,7 +549,9 @@ function bindKeys() {
     if (k === '+') { toggleDrawer(); return; }
     if (k === 'f') { fitToScreen(); draw(); updateHud(); return; }
     if (k === '1') { zoomToActual(); draw(); updateHud(); return; }
-    if (k === 's' && (event.ctrlKey || event.metaKey)) {
+    if (k === 's') {
+      // Plain "s" as well as ctrl+s: the bar has a visible Simpan button, and a
+      // button you can see should have a key you can press.
       event.preventDefault();
       save();
       return;
@@ -557,6 +576,7 @@ function bindChrome() {
   $('tool-fill').addEventListener('click', () => setTool('fill'));
   $('add').addEventListener('click', () => toggleDrawer());
   $('close').addEventListener('click', () => toggleDrawer(false));
+  $('save').addEventListener('click', () => save());
   $('view-fit').addEventListener('click', () => { fitToScreen(); draw(); updateHud(); });
   $('view-1x').addEventListener('click', () => { zoomToActual(); draw(); updateHud(); });
 
