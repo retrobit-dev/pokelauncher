@@ -306,7 +306,7 @@ python3 tools/preview_server.py --port 9000
 | `/` | **Hanya layar tablet**: render MatePad Mini landscape di atas latar biru cerah, tanpa teks lain. |
 | `/device` | Sama dengan `/`, dipertahankan supaya tautan lama tetap jalan. |
 | `/editor` | Editor peta 16px: pilih tile, cat, hapus, isi kotak, simpan. |
-| `/docs/tileset/map.json` | Peta kerja editor; jika belum ada, server menyajikan peta bawaan APK. |
+| `/docs/tileset/map.json` | Peta yang dimuat game — satu berkas, dibaca editor dan game. |
 
 Server hanya menyajikan rute di atas; sisa repo tidak bisa diakses.
 
@@ -323,10 +323,11 @@ sama dengan toolbar editor, bukan emoji berwarna yang tampil beda di tiap sistem
 Pilihannya disimpan di URL (`/?mode=editor`), jadi tautan atau muat ulang tetap membuka mode yang
 sama. Editor juga tetap bisa dibuka langsung di `/editor`.
 
-**Gameplay memakai peta dari editor.** Menyimpan di editor (`Simpan`, atau `S`) melakukan dua hal:
-menulis dokumen kerja `docs/tileset/map.json` (tidak masuk git) dan menerbitkannya ke
-`app/src/main/assets/tileset/map.json` yang dimuat game. Jadi peta yang kamu lukis langsung muncul
-di Mode gameplay. Render tablet dibuat ulang di latar belakang saat peta berubah — sekitar 45 detik,
+**Gameplay memakai peta dari editor.** Menyimpan di editor (`Simpan`, atau `S`) menulis langsung
+`app/src/main/assets/tileset/map.json` — berkas yang sama yang dimuat game. Dulu ada dua berkas
+(dokumen kerja di `docs/` lalu disalin saat terbit), dan justru jarak antara keduanya yang membuat
+editor dan gameplay bisa menampilkan peta berbeda; sekarang satu berkas, jadi keduanya tidak bisa
+lagi berselisih. Peta yang kamu lukis langsung muncul di Mode gameplay. Render tablet dibuat ulang di latar belakang saat peta berubah — sekitar 45 detik,
 karena itu tab menampilkan status *Menyiapkan tampilan dari peta editor…* alih-alih diam saja.
 
 **Alat editor ada di bawah peta, dua kolom.** Semua tombol editor berada di bar yang menempel di

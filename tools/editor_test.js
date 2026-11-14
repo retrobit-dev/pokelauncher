@@ -62,8 +62,13 @@ class Element {
   getBoundingClientRect() { return { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight }; }
   getContext() {
     const noop = () => {};
+    this._draws = this._draws || [];
+    const self = this;
     return {
-      setTransform: noop, fillRect: noop, drawImage: noop, beginPath: noop,
+      setTransform: noop,
+      fillRect(...args) { self._fills = (self._fills || []); self._fills.push(args); },
+      drawImage(...args) { self._draws.push(args); },
+      beginPath: noop,
       moveTo: noop, lineTo: noop, stroke: noop, strokeRect: noop, save: noop,
       restore: noop, rect: noop, clip: noop, fill: noop, arc: noop,
       imageSmoothingEnabled: false, fillStyle: '', strokeStyle: '', lineWidth: 1,
@@ -90,7 +95,8 @@ const window = {
 };
 
 const Image = class {
-  set src(_value) { setTimeout(() => this.onload && this.onload(), 0); }
+  set src(value) { this._src = value; setTimeout(() => this.onload && this.onload(), 0); }
+  get src() { return this._src; }
 };
 
 const fetch = async (url) => {
@@ -113,6 +119,7 @@ const loader = new Function(
             paintAt, fillFrom, mapExtent, fitToScreen, zoomToActual, inBounds, DEFAULT_COLS,
             DEFAULT_ROWS, TILE, zoomIn, zoomOut, gameFrameRect, FRAME_MAP, newMap, save,
             undo, redo, setBrushSize, brushUp, brushDown, brushCells, setTool, endStroke,
+            drawPlayerMarker,
             updateHistoryButtons };`
 );
 const editor = loader(sandbox.document, sandbox.window, sandbox.Image, sandbox.fetch,
@@ -271,6 +278,24 @@ editor.boot().then(() => {
   check('tidak ada state pointers', state.pointers, undefined);
   check('tidak ada state pinch', state.pinch, undefined);
   check('tidak ada fungsi pinchInfo', typeof editor.pinchInfo, 'undefined');
+
+  console.log('\nkarakter di spawn');
+  check('sprite pemain termuat', state.playerSprite ? state.playerSprite.src : null,
+    '/docs/tileset/player.png');
+  // The marker must be the app's character, not a bare square: the whole point
+  // of showing it in the editor is to see where the player will stand.
+  const pad = new Element('canvas');
+  const pctx = pad.getContext('2d');
+  editor.drawPlayerMarker(pctx, 0, 0, 16);
+  const spriteDraw = pad._draws.filter((a) => a.length === 9 && a[3] === 16 && a[4] === 16);
+  check('karakter digambar dari frame DOWN', spriteDraw.length, 1);
+  check('frame yang dipakai: kolom 0 baris 1', spriteDraw.length
+    ? [spriteDraw[0][1], spriteDraw[0][2]] : null, [0, 16]);
+  check('mengisi satu sel penuh', spriteDraw.length
+    ? [spriteDraw[0][7], spriteDraw[0][8]] : null, [16, 16]);
+  // the fallback square must not be used while the sheet is loaded
+  const redSquares = (pad._fills || []).filter((a) => a[2] > 0 && a[2] < 16 && String(a[3]).includes('.95'));
+  check('tidak memakai kotak merah saat sprite ada', redSquares.length, 0);
 
   console.log('\nzoom kelipatan 0.5');
   check('0.5 ada di daftar langkah', steps.includes(0.5), true);

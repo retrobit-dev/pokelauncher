@@ -26,11 +26,10 @@ OUT = next((a for a in sys.argv[1:] if a.endswith('.png')),
            os.path.join(HERE, '..', 'docs', 'editor', _default))
 
 meta=json.load(open(os.path.join(ROOT,'docs/tileset/tileset.json'))); T=meta['tiles']
-# The editor's working document wins over the copy baked into the APK, so the
-# tablet shot shows the map that was actually drawn and saved. This mirrors the
-# rule tools/preview_server.py uses when it serves /docs/tileset/map.json.
-_working = os.path.join(ROOT,'docs/tileset/map.json')
-_map = _working if os.path.exists(_working) else os.path.join(ROOT,'app/src/main/assets/tileset/map.json')
+# One map file, the one the app loads. The editor used to keep a separate
+# working copy under docs/, and the tablet shot could be built from a map the
+# game never saw; drawing from the asset removes that gap by construction.
+_map = os.path.join(ROOT,'app/src/main/assets/tileset/map.json')
 doc=json.load(open(_map))
 atlas=read_png(os.path.join(ROOT,'docs/tileset/johto-tileset.png'))
 PX=16
@@ -90,32 +89,18 @@ for yy in range(16):
         r,g,b,a=player.px(xx,16+yy)
         if a: world.dot(bx+xx,by+yy,(r,g,b))
 
-# A planted field: tilled soil with sprouts of three ages, and two torches.
-# Drawn here rather than loaded, because crops are runtime state, not map data.
-# Gated on the map having cells: the starter map is deliberately empty now, and
-# a field floating on black would show scenery the map itself does not contain.
-field_x, field_y = sp['x'] - 2, sp['y'] + 2
-for row in range(3 if doc['cells'] else 0):
-    for col in range(4):
-        cx, cy = (field_x + col) * PX, (field_y + row) * PX
-        rect(world, cx, cy, PX, PX, (0x6B, 0x4F, 0x33))
-        rect(world, cx, cy + 3, PX, 2, (0x59, 0x40, 0x28))
-        stage = ((row * 4 + col) % 3) + 1
-        h = 4 + stage * 3
-        rect(world, cx + 7, cy + 15 - h, 2, h, (0x2F, 0x6B, 0x28))
-        rect(world, cx + 5, cy + 15 - h, 2, 2, (0x77, 0xA8, 0x3F))
-        rect(world, cx + 9, cy + 15 - h, 2, 2, (0x77, 0xA8, 0x3F))
-        if stage >= 2:
-            rect(world, cx + 4, cy + 13 - h // 2, 3, 2, (0x8F, 0xBE, 0x4A))
-            rect(world, cx + 9, cy + 13 - h // 2, 3, 2, (0x8F, 0xBE, 0x4A))
-        if stage == 3:  # ripe: a grain head, the thing you harvest
-            rect(world, cx + 6, cy + 13 - h, 4, 3, (0xE8, 0xC5, 0x5C))
-torches = (((sp['x'] + 2, sp['y'] + 1), (sp['x'] + 1, sp['y'] + 5),
-            (sp['x'] - 4, sp['y'] + 4)) if doc['cells'] else ())
-for (tx, ty) in torches:
-    rect(world, tx * PX + 6, ty * PX + 4, 4, 10, (0x6B, 0x4B, 0x2E))
-    rect(world, tx * PX + 7, ty * PX + 2, 2, 3, (0xE8, 0x8B, 0x2E))
-    rect(world, tx * PX + 7, ty * PX + 1, 2, 1, (0xF2, 0xC7, 0x5A))
+# No crops, no torches, no invented scenery.
+#
+# This block used to draw a planted field and three torches next to the player,
+# gated on the map having *any* cells. That is why the tablet render showed a
+# garden that the map editor never had: crops and torches are runtime state in
+# the app, and the mock was making them up. A picture of the home screen is only
+# worth looking at if it shows what the map file actually contains, so the field
+# is gone. When crops exist in a save, drawing them belongs here as real data
+# read from that save, not as decoration invented at render time.
+#
+# The one thing worth keeping is the night pass: it darkens the real map.
+torches = ()
 
 if NIGHT:
     world = night(world, torches)

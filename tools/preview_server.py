@@ -40,7 +40,6 @@ FIELD = os.path.join(DOCS, "editor", "field.png")
 
 # The map the editor works on. Kept out of git: it is the artist's document,
 # and the game will get its own export format later.
-MAP_PATH = os.path.join(ROOT, "docs", "tileset", "map.json")
 
 # What the game actually loads. `Mode gameplay` must show the map drawn in the
 # editor, so publishing copies the document here; the two files are different
@@ -278,14 +277,26 @@ class PreviewHandler(http.server.BaseHTTPRequestHandler):
                 kind = "image/png" if name.endswith(".png") else "application/json"
                 target = os.path.join(DOCS, "tileset", name)
                 if name == "map.json":
-                    # The editor's working document wins: gameplay mode has to
-                    # show the map that was drawn, not the one frozen into the
-                    # APK. Falling back to the asset keeps a fresh clone working
-                    # before anything has been saved.
-                    if not os.path.exists(target):
-                        target = GAME_MAP_PATH
+                    # Serve exactly the map the game loads, not a separate
+                    # working copy. The editor used to read docs/tileset/map.json
+                    # while the game read the APK asset, so the two could show
+                    # different maps until someone pressed Simpan: the editor
+                    # was honest about one file and gameplay about another.
+                    # /api/map still writes the working document (it is the
+                    # editor's draft), but every read - editor included - comes
+                    # from the file the app actually loads.
+                    target = GAME_MAP_PATH
                 self.send_file(target, kind)
                 return
+        if path == "/docs/tileset/player.png":
+            # The spawn marker in the editor is the app's own walk sheet, so the
+            # editor shows the character the game shows. Allowed by name, not by
+            # prefix: this server exposes a short list of files, never a folder.
+            self.send_file(
+                os.path.join(ROOT, "app", "src", "main", "assets", "sprites", "player.png"),
+                "image/png",
+            )
+            return
         if path == "/docs/" + SHOT:
             self.send_file(os.path.join(DOCS, SHOT), "image/png")
             return
@@ -313,44 +324,44 @@ class PreviewHandler(http.server.BaseHTTPRequestHandler):
                          "application/json")
             return
 
-        # Keep the last good map around: a bad save must not destroy work.
-        if os.path.exists(MAP_PATH):
+        # Write the file the game loads, not a separate draft.
+        #
+        # There used to be two: the editor saved docs/tileset/map.json and
+        # /api/publish copied it into the APK. Between the two, the editor showed
+        # one map and gameplay showed another - a map could look finished in the
+        # editor and still be empty in the game, or worse, the game could keep
+        # showing an older map than the one on screen. One file, written once,
+        # removes the whole class of bug.
+        if os.path.exists(GAME_MAP_PATH):
             try:
-                os.replace(MAP_PATH, MAP_PATH + ".bak")
+                os.replace(GAME_MAP_PATH, GAME_MAP_PATH + ".bak")
             except OSError:
                 pass
-        os.makedirs(os.path.dirname(MAP_PATH), exist_ok=True)
-        with open(MAP_PATH, "w", encoding="utf-8") as handle:
+        os.makedirs(os.path.dirname(GAME_MAP_PATH), exist_ok=True)
+        with open(GAME_MAP_PATH, "w", encoding="utf-8") as handle:
             json.dump(document, handle)
             handle.write("\n")
         self.respond(json.dumps({"ok": True, "bytes": len(body)}).encode("utf-8"),
                      "application/json")
 
     def publish_map(self) -> None:
-        """Copies the editor's document to the map the game loads.
+        """Confirm the saved map is one the game can read.
 
-        Two files, one purpose each: `docs/tileset/map.json` is the artist's
-        working document and stays out of git, `app/src/main/assets/...` is what
-        the APK ships. Saving in the editor must do both, or "gameplay uses the
-        editor's map" would be a claim rather than a fact.
+        Saving already writes the file the app loads, so there is nothing left
+        to copy: this checks the document round-trips through the same rules the
+        game uses, and reports a bad map here instead of as a blank screen later.
         """
-        if not os.path.exists(MAP_PATH):
+        if not os.path.exists(GAME_MAP_PATH):
             self.respond(json.dumps({"ok": False, "error": "belum ada peta tersimpan"}).encode("utf-8"),
                          "application/json")
             return
         try:
-            with open(MAP_PATH, encoding="utf-8") as handle:
+            with open(GAME_MAP_PATH, encoding="utf-8") as handle:
                 document = json.load(handle)
-            # Round-trip through the parser the app uses: a document that the
-            # game cannot read must fail here, not as a blank screen later.
             if not isinstance(document.get("cells"), dict):
                 raise ValueError("peta tidak punya objek 'cells'")
             if not isinstance(document.get("cols"), int) or not isinstance(document.get("rows"), int):
                 raise ValueError("peta tidak punya cols/rows")
-            os.makedirs(os.path.dirname(GAME_MAP_PATH), exist_ok=True)
-            with open(GAME_MAP_PATH, "w", encoding="utf-8") as handle:
-                json.dump(document, handle)
-                handle.write("\n")
         except (OSError, ValueError, json.JSONDecodeError) as error:
             self.respond(json.dumps({"ok": False, "error": str(error)}).encode("utf-8"),
                          "application/json")
@@ -371,7 +382,7 @@ class PreviewHandler(http.server.BaseHTTPRequestHandler):
         the next load serves the new one; the tabs carry the re-render state so
         the wait is visible instead of mysterious.
         """
-        source = MAP_PATH if os.path.exists(MAP_PATH) else GAME_MAP_PATH
+        source = GAME_MAP_PATH
         try:
             newest = max(os.path.getmtime(source), os.path.getmtime(FIELD))
             shot = os.path.join(DOCS, SHOT)
@@ -466,7 +477,7 @@ def main(argv: list[str] | None = None) -> None:
     with Server((args.host, args.port), PreviewHandler) as httpd:
         print(f"Johto map editor: http://localhost:{args.port}/")
         print(f"  pratinjau perangkat: /device")
-        print(f"  tileset: docs/tileset/  map: {os.path.relpath(MAP_PATH, ROOT)}")
+        print(f"  tileset: docs/tileset/  map: {os.path.relpath(GAME_MAP_PATH, ROOT)}")
         print("  Ctrl+C untuk berhenti")
         try:
             httpd.serve_forever()

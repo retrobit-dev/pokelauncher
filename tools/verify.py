@@ -485,6 +485,26 @@ def check_preview_screen(path: str) -> None:
         fail(f"the panel is {len(seen)} colour(s), so the field is not being drawn; "
              "run tools/mock_ingame.py --field before rendering the tablet")
 
+    # The render must show the map file and nothing else. The mock used to draw
+    # a planted field and torches of its own whenever the map had any cells,
+    # which is how a "kebun" appeared in gameplay that the editor never had.
+    # That block is gone; this keeps it gone. Crops are runtime state, so a
+    # picture built from map.json must never contain crop colours at all.
+    crop_colours = ((0x6B, 0x4F, 0x33), (0x3F, 0x7A, 0x32), (0xE8, 0xC5, 0x5C))
+    crop_hits = {}
+    for fy in range(2, 99, 2):
+        for fx in range(2, 99, 2):
+            x = panel_x + PANEL[0] * fx // 100
+            y = panel_y + PANEL[1] * fy // 100
+            colour = pixel(x, y)[:3]
+            if colour in crop_colours:
+                crop_hits[colour] = crop_hits.get(colour, 0) + 1
+    if len(crop_hits) >= 2:
+        fail(f"the preview shows a field the map does not contain "
+             f"({sum(crop_hits.values())} crop-coloured samples); "
+             "tools/mock_ingame.py must draw only what map.json holds")
+
+
     # 3b. grass must be on screen whenever the map has cells to draw: this is
     # the tileset's lawn, and it is what separates a real field render from any
     # other picture in the frame. The colours come from tools/tileset/palette.py.
@@ -789,9 +809,11 @@ def check_editor() -> None:
     for control in ('id="save"', 'id="tool-pencil"', 'id="add"'):
         if control not in html:
             fail(f"editor/index.html: the tool bar is missing {control}")
-    if "'/api/publish'" not in js:
-        fail("editor/app.js must publish the map to the game on save, "
-             "or Mode gameplay cannot show what was drawn")
+    if "'/api/map'" not in js:
+        fail("editor/app.js must save through /api/map")
+    if "peta tersimpan tidak sampai ke game" not in js and \
+            "dipakai game" not in js:
+        fail("editor/app.js must tell the user whether the save reached the game")
 
     # every tool is one square size: an icon on top, its label underneath. A
     # button that grows with its label is what made the old bar uneven.
@@ -893,6 +915,12 @@ def check_editor() -> None:
         if any(v != int(v) for v in steps if v > 1):
             fail("editor/app.js: zoom above 1 must be whole numbers, "
                  "or tiles land between pixels")
+    if "drawPlayerMarker" not in js:
+        fail("editor/app.js: the spawn needs the character as a marker "
+             "(drawPlayerMarker), not a bare square")
+    if "/docs/tileset/player.png" not in js:
+        fail("editor/app.js: the player marker must load the app's own walk sheet")
+
     for needle in ("gameFrameRect", "drawGameFrame", "DEAD_ZONE"):
         if needle not in js:
             fail(f"editor/app.js: {needle} missing; the gameplay frame would not be drawn")
@@ -1032,6 +1060,37 @@ def check_player_sprite() -> None:
             fail(f"PlayerSprite.kt should declare {needle!r}: {why}")
 
 
+def check_save_is_tied_to_its_map() -> None:
+    """A save must not bring its garden to a different map.
+
+    The bug: crops, tilled soil and torches were restored on any map as long as
+    the player's cell still existed. Save on one map, repaint the map, and the
+    old garden showed up in cells the new map never filled. The fix is a map
+    fingerprint in the save; these checks make sure it cannot quietly disappear.
+    """
+    path = os.path.join(ROOT, "app", "src", "main", "java", "dev", "retrobit",
+                        "pokelauncher", "game", "WorldState.kt")
+    if not os.path.exists(path):
+        fail("WorldState.kt is missing")
+        return
+    state = open(path, encoding="utf-8").read()
+    if "const val VERSION = 2" not in state:
+        fail("WorldState.kt: the save version must be 2 or newer, so v1 saves "
+             "(which carry a map-less garden) are dropped")
+    if "fun fingerprint(" not in state:
+        fail("WorldState.kt: a save needs a map fingerprint")
+    if "mapFingerprint" not in state:
+        fail("WorldState.kt: the fingerprint is never written to the save")
+    if 'root.optInt("version", 1) < VERSION' not in state:
+        fail("WorldState.kt: an old save version must be rejected")
+
+    vm = os.path.join(ROOT, "app", "src", "main", "java", "dev", "retrobit",
+                      "pokelauncher", "ui", "GameViewModel.kt")
+    model = open(vm, encoding="utf-8").read()
+    if "WorldState.fingerprint(" not in model:
+        fail("GameViewModel.kt: saving must stamp the map fingerprint")
+
+
 def check_zoom_agreement() -> None:
     """The app's default zoom and every tool that renders it must match.
 
@@ -1094,6 +1153,7 @@ def main() -> int:
     check_game_assets()
     check_player_sprite()
     check_zoom_agreement()
+    check_save_is_tied_to_its_map()
 
     for problem in problems:
         print("FAIL", problem)

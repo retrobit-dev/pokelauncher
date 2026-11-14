@@ -563,7 +563,11 @@ class WorldTest {
         world.water(x, y)
         world.step(Direction.RIGHT)
 
-        val json = WorldState.toJson(WorldState.snapshot(world, day = 3), nowMillis = 1234L)
+        val json = WorldState.toJson(
+            WorldState.snapshot(world, day = 3),
+            nowMillis = 1234L,
+            mapFingerprint = WorldState.fingerprint(world.map),
+        )
         val loaded = WorldState.fromJson(json, world, fallbackDay = 0)
         assertNotNull(loaded)
 
@@ -583,9 +587,91 @@ class WorldTest {
         val json = WorldState.toJson(
             WorldState.snapshot(world, day = 0).copy(playerX = 400, playerY = 400),
             nowMillis = 0L,
+            mapFingerprint = WorldState.fingerprint(world.map),
         )
         assertNull("a player outside the map must not load", WorldState.fromJson(json, world, fallbackDay = 0))
         assertNull("garbage must not crash", WorldState.fromJson("{not json", world, fallbackDay = 0))
+    }
+
+    @Test
+    fun `a save made on another map does not bring its garden here`() {
+        // The bug the user hit: a field planted on one map showed up in cells
+        // the current map never painted, because the save was only checked for
+        // "is the player inside the map". The map changed, the player's cell did
+        // not, and the old crops came along.
+        val old = world()
+        val x = old.playerX
+        val y = old.playerY
+        old.till(x, y)
+        old.plant(x, y, day = 3)
+        old.step(Direction.RIGHT)
+        val json = WorldState.toJson(
+            WorldState.snapshot(old, day = 3),
+            nowMillis = 1L,
+            mapFingerprint = WorldState.fingerprint(old.map),
+        )
+
+        // Same shape, different content: one extra path tile in a corner the
+        // forest garden never touched. That is all it takes for the map to be a
+        // different map.
+        val tiles = MapJson.parseTileSet(tilesJson)
+        val changedJson = JSONObject(mapJson())
+        changedJson.getJSONObject("cells").put("1,6", JSONObject().put("ground", "path"))
+        val changed = MapJson.parseMap(changedJson.toString(), tiles)
+        val fresh = World(changed, tiles, startX = 2, startY = 3)
+        fresh.till(x, y)                       // soil here, but nothing planted
+        assertNull(
+            "a save from a different map must be dropped, not merged",
+            WorldState.fromJson(json, fresh, fallbackDay = 0),
+        )
+        assertNull("no crop appeared out of nowhere", fresh.cropAt(x, y))
+    }
+
+    @Test
+    fun `a save on the same map still loads after the map is republished`() {
+        // The fingerprint must not be so strict that republishing an unchanged
+        // map drops the player's field: same cells, same tiles, same save.
+        val world = world()
+        val x = world.playerX
+        world.till(x, world.playerY)
+        world.plant(x, world.playerY, day = 2)
+        val json = WorldState.toJson(
+            WorldState.snapshot(world, day = 2),
+            nowMillis = 7L,
+            mapFingerprint = WorldState.fingerprint(world.map),
+        )
+        val sameMap = World(world.map, tiles)
+        val loaded = WorldState.fromJson(json, sameMap, fallbackDay = 0)
+        assertNotNull("an unchanged map must keep its save", loaded)
+        WorldState.restore(loaded!!.snapshot, sameMap)
+        assertNotNull("the crop is still there", sameMap.cropAt(x, world.playerY))
+    }
+
+    @Test
+    fun `a version 1 save is dropped`() {
+        // v1 saves carry a garden but no fingerprint: there is no way to tell
+        // which map they belong to, so they are not guessed at.
+        val world = world()
+        val root = JSONObject(
+            WorldState.toJson(
+                WorldState.snapshot(world, day = 0),
+                nowMillis = 0L,
+                mapFingerprint = WorldState.fingerprint(world.map),
+            ),
+        )
+        root.put("version", 1)
+        root.remove("mapFingerprint")
+        root.put(
+            "crops",
+            JSONObject().put(
+                GameMap.key(world.playerX, world.playerY).toString(),
+                JSONObject().put("planted", 0).put("watered", -1).put("growth", 1),
+            ),
+        )
+        assertNull(
+            "a v1 save has no map identity and must not restore",
+            WorldState.fromJson(root.toString(), world, fallbackDay = 0),
+        )
     }
 
     @Test

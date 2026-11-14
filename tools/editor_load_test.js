@@ -1,9 +1,8 @@
 // Load the real starter map through the real editor code and confirm every
 // layer survives: this is the round trip that decides whether a map authored in
 // the browser looks the same in the app.
-// The editor's own working document (docs/tileset/map.json) is gitignored, so a
-// clean checkout does not have it: this loads app/src/main/assets instead, which
-// is the map that ends up inside the APK.
+// The map under test is the one the app loads, app/src/main/assets/tileset, so a
+// pass here means the map inside the APK opens correctly in the editor too.
 const EXPECT_COLS = 80;
 const EXPECT_ROWS = 50;
 

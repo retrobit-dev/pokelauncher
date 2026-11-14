@@ -70,6 +70,7 @@ const $ = (id) => document.getElementById(id);
 const state = {
   tileset: null,        // tileset.json
   atlas: null,          // HTMLImageElement of the atlas
+  playerSprite: null,   // HTMLImageElement of the walk sheet (2 frames x 4 rows)
   cells: new Map(),     // "x,y|layer" -> { name, layer, solid } | null
   camera: { x: 0, y: 0 },   // top-left of the view, in map pixels
   zoom: 1,          // 1 = one cell is exactly 16x16 screen pixels
@@ -241,11 +242,18 @@ function draw() {
   // them (WorldCanvas.drawMap), so a tall object overhangs exactly as it will
   // on the device. There is no grid: the app draws none, and an editor that
   // shows one is showing something the game cannot.
+  //
+  // A multi-cell tile is drawn once, from the cell that starts it. Without this
+  // the same tree could be drawn twice: once as the 32x32 it is, and again as a
+  // 16x16 from the cell its own layer key sits on, which paints a second trunk
+  // on top of the canopy. The tile set says how big a tile is (footprint), so
+  // the rule comes from the data, not from a list of special cases.
   for (const layer of LAYERS) {
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
         const cell = state.cells.get(layerKey(x, y, layer));
         if (!cell) continue;
+        if (coveredByNeighbour(x, y, layer)) continue;
         drawTile(ctx, cell.name, x, y, size);
       }
     }
@@ -324,15 +332,45 @@ function drawGameFrame(ctx, size, w, h) {
   ctx.lineWidth = 1;
   ctx.strokeRect(sx + .5, sy + .5, frame.w - 1, frame.h - 1);
 
-  // the player, at the spawn cell, inside the frame
+  // The player, at the spawn cell, inside the frame. The real sprite rather
+  // than a red square: the marker has to stand where the game will put the
+  // player, and a square told you the cell but not the character.
   const px = frame.spawn.x * size - state.camera.x;
   const py = frame.spawn.y * size - state.camera.y;
-  ctx.fillStyle = 'rgba(197, 58, 45, .95)';
-  ctx.fillRect(px + size * 0.25, py + size * 0.25, size * 0.5, size * 0.5);
-  ctx.strokeStyle = 'rgba(251, 243, 220, .95)';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(px + size * 0.25 + .5, py + size * 0.25 + .5, size * 0.5 - 1, size * 0.5 - 1);
+  drawPlayerMarker(ctx, px, py, size);
 
+  ctx.restore();
+}
+
+/**
+ * The player at the spawn point.
+ *
+ * The sheet is the one the app loads (`app/src/main/assets/sprites/player.png`):
+ * two frames wide, one row per direction, DOWN first. Frame 0 of the DOWN row is
+ * the standing pose, which is what a spawn marker is. A halo underneath keeps
+ * the character readable on dark tiles and at 0.5x, where a 16px sprite is 8px.
+ */
+function drawPlayerMarker(ctx, px, py, size) {
+  ctx.save();
+  // halo: one cell, soft ring, so the marker is findable at any zoom
+  ctx.fillStyle = 'rgba(251, 243, 220, .35)';
+  ctx.fillRect(px, py, size, size);
+  if (state.playerSprite) {
+    const frame = 16;              // one cell in the sheet
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(
+      state.playerSprite,
+      0, 16, frame, frame,        // frame 0 of the DOWN row
+      px, py, size, size,
+    );
+  } else {
+    // the sheet failed to load: a plain block still says "the player is here"
+    ctx.fillStyle = 'rgba(197, 58, 45, .95)';
+    ctx.fillRect(px + size * 0.25, py + size * 0.25, size * 0.5, size * 0.5);
+  }
+  ctx.strokeStyle = 'rgba(59, 47, 30, .85)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(px + .5, py + .5, size - 1, size - 1);
   ctx.restore();
 }
 
@@ -382,6 +420,38 @@ function drawCursor(ctx, size) {
  */
 function tileOrigin(tile, cellX, cellY) {
   return { x: cellX, y: cellY };
+}
+
+/** Cells a tile spans, from the tileset's own footprint field. */
+function tileFootprint(tile) {
+  const w = Math.max(1, Math.round(tile.w / TILE));
+  const h = Math.max(1, Math.round(tile.h / TILE));
+  const declared = Array.isArray(tile.footprint) ? tile.footprint : null;
+  return {
+    w: declared ? Math.max(1, declared[0]) : w,
+    h: declared ? Math.max(1, declared[1]) : h,
+  };
+}
+
+/**
+ * True when a taller/wider tile in an earlier cell already paints this cell.
+ *
+ * Only the same layer counts: a tree must not hide the grass under it, but two
+ * trees must not both claim the cell where they overlap.
+ */
+function coveredByNeighbour(x, y, layer) {
+  for (let dy = 0; dy < 16; dy++) {
+    for (let dx = 0; dx < 16; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      const other = state.cells.get(layerKey(x - dx, y - dy, layer));
+      if (!other) continue;
+      const tile = state.tileset.tiles[other.name];
+      if (!tile) continue;
+      const foot = tileFootprint(tile);
+      if (foot.w > dx && foot.h > dy) return true;
+    }
+  }
+  return false;
 }
 
 // ------------------------------------------------------------------ editing
@@ -659,8 +729,9 @@ async function save() {
       toast(`Gagal: ${result.error}`);
       return;
     }
-    // The game loads the map from the app assets, not from the editor's
-    // working file: publishing is what makes "Mode gameplay" show this map.
+    // /api/map writes the file the game itself loads, so the map on screen now
+    // is the map in the build. No second copy step, and therefore no window in
+    // which the editor and gameplay disagree about what the map is.
     const published = await fetch('/api/publish', { method: 'POST' });
     const report = await published.json();
     toast(report.ok
@@ -960,18 +1031,23 @@ function bindChrome() {
 
 // ------------------------------------------------------------------ boot
 async function boot() {
-  const [indexResponse, atlas] = await Promise.all([
+  const loadImage = (src) => new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = src;
+  });
+  const [indexResponse, atlas, sprite] = await Promise.all([
     fetch('/docs/tileset/tileset.json', { cache: 'no-store' }),
-    new Promise((resolve, reject) => {
-      const image = new Image();
-      image.onload = () => resolve(image);
-      image.onerror = reject;
-      image.src = '/docs/tileset/johto-tileset.png';
-    }),
+    loadImage('/docs/tileset/johto-tileset.png'),
+    // The spawn marker is a screenshot aid, not content: a missing sheet must
+    // not stop the editor from opening.
+    loadImage('/docs/tileset/player.png').catch(() => null),
   ]);
   if (!indexResponse.ok) throw new Error('tileset.json tidak ditemukan');
   state.tileset = await indexResponse.json();
   state.atlas = atlas;
+  state.playerSprite = sprite;
 
   await loadMap();
   seedIfEmpty();

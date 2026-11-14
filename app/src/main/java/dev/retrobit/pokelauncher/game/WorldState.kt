@@ -18,8 +18,18 @@ import org.json.JSONObject
  */
 object WorldState {
 
-    /** Bumped only when an older file could be misread, not on every addition. */
-    const val VERSION = 1
+    /**
+     * Bumped only when an older file could be misread, not on every addition.
+     *
+     * v2 adds `mapFingerprint`. v1 saves were written without one, and a v1 save
+     * carried the field, torches and buildings of whatever map it was made on.
+     * Because the "still makes sense for this map" check only looked at the
+     * player's cell, a v1 save survived a completely new map: the old garden
+     * appeared in cells the current map never painted, which is the "why is
+     * there a garden in gameplay?" bug. v1 files are therefore dropped, not
+     * migrated.
+     */
+    const val VERSION = 2
 
     /**
      * A snapshot of the mutable parts of a world.
@@ -90,10 +100,11 @@ object WorldState {
 
     // ------------------------------------------------------------------ json
 
-    fun toJson(snapshot: Snapshot, nowMillis: Long): String {
+    fun toJson(snapshot: Snapshot, nowMillis: Long, mapFingerprint: String): String {
         val root = JSONObject()
         root.put("version", VERSION)
         root.put("savedAt", nowMillis)
+        root.put("mapFingerprint", mapFingerprint)
 
         val player = JSONObject()
         player.put("x", snapshot.playerX)
@@ -148,6 +159,14 @@ object WorldState {
         } catch (error: JSONException) {
             return null
         }
+
+        // A save belongs to the map it was made on. Anything else is scenery
+        // from a map that no longer exists: crops, torches and buildings in
+        // cells the current map never filled. Dropping it is the only honest
+        // answer - the alternative is keeping a garden nobody planted.
+        if (root.optInt("version", 1) < VERSION) return null
+        val savedFor = root.optString("mapFingerprint", "")
+        if (savedFor.isEmpty() || savedFor != fingerprint(world.map)) return null
 
         val player = root.optJSONObject("player")
         val x = player?.optInt("x", world.playerX) ?: world.playerX
@@ -213,6 +232,37 @@ object WorldState {
     }
 
     data class Parsed(val snapshot: Snapshot, val savedAt: Long)
+
+    /**
+     * Identifies a map by its shape and contents, not by its title.
+     *
+     * The editor republishes the map file whenever something is saved, so there
+     * is no stable id to point at. What matters for a save is whether the same
+     * cells hold the same tiles: if they do, a field in cell (12, 7) still sits
+     * on the soil it was planted in. The digest is FNV-1a over the sorted cell
+     * names, cheap enough to run at startup and stable across processes, unlike
+     * String.hashCode which is also stable but easy to collide with on purpose.
+     */
+    fun fingerprint(map: GameMap): String {
+        var hash = -3750763034362895579L            // FNV-1a 64-bit offset basis
+        val parts = ArrayList<String>()
+        for ((x, y, cell) in map.entries()) {
+            parts.add("$x,$y,${cell.ground},${cell.building},${cell.objectTile}")
+        }
+        // Natural order, never a locale's collation: the digest must not depend
+        // on the device's language. (String.sort() is fine; the note is here
+        // because a locale-aware comparer would silently break every saved map.)
+        parts.sort()
+        for (part in parts) {
+            for (char in part) {
+                hash = hash xor char.code.toLong()
+                hash *= 1099511628211L              // FNV prime
+            }
+        }
+        // Built by hand, not String.format: format() borrows the device locale,
+        // and digits are not guaranteed to be ASCII in every one of them.
+        return "${map.cols}:${map.rows}:${parts.size}:" + java.lang.Long.toHexString(hash)
+    }
 
     /** Caps a hostile file: a save can describe a big field, not a million. */
     private const val MAX_STACK = 9999

@@ -179,7 +179,13 @@ class GameViewModel(context: Context) : ViewModel() {
     /** Called after anything that changes the save-worthy world. */
     private fun persist() {
         val world = _state.value.world ?: return
-        store.save(WorldState.toJson(WorldState.snapshot(world, dayOf()), System.currentTimeMillis()))
+        store.save(
+            WorldState.toJson(
+                WorldState.snapshot(world, dayOf()),
+                System.currentTimeMillis(),
+                WorldState.fingerprint(_state.value.map),
+            ),
+        )
     }
 
     /** Whole days since the epoch in local time, the unit crops age in. */

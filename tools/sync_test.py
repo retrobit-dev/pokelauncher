@@ -69,7 +69,10 @@ const ctx = {
   arc() {}, clip() {},
   imageSmoothingEnabled: false, fillStyle: '', strokeStyle: '', lineWidth: 1,
   drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh) {
-    calls.push({ sx, sy, sw, sh, dx, dy, dw, dh });
+    // Which sheet this came from matters: the spawn marker is a 16x16 draw
+    // from the player sheet and would otherwise pass as a map tile. That is
+    // exactly how the old 16x16 sprite marker slipped past a size filter.
+    calls.push({ sx, sy, sw, sh, dx, dy, dw, dh, sheet: img && img._sheet });
   },
   canvas: { width: 0, height: 0 },
 };
@@ -98,7 +101,17 @@ const win = {
   innerWidth: 320, innerHeight: 192, devicePixelRatio: 1,
   addEventListener() {}, setTimeout, clearTimeout,
 };
-const Image = class { set src(_v) { setTimeout(() => this.onload && this.onload(), 0); } };
+const Image = class {
+  // The shim has no decoder, so a "loaded" image is 1x1 and blank: the marker's
+  // own pixels never reach the comparison. The file it came from is still
+  // recorded, which is what the spawn marker check needs.
+  constructor() { this.width = 1; this.height = 1; }
+  set src(value) {
+    this._sheet = String(value).split('/').pop();
+    setTimeout(() => this.onload && this.onload(), 0);
+  }
+  get src() { return this._sheet; }
+};
 const fetch = async (u) => {
   if (u.includes('tileset.json')) {
     return { ok: true, json: async () => JSON.parse(fs.readFileSync(path.join(ROOT, 'docs/tileset/tileset.json'), 'utf8')) };
@@ -119,9 +132,11 @@ mod.boot().then(() => {
   st.zoom = 1; st.camera.x = 0; st.camera.y = 0;
   calls.length = 0;
   mod.draw();
-  // keep only tile draws; the frame and cursor are editor decorations
-  const tiles = calls.filter((c) => (c.dw === 16 || c.dw === 32) && (c.dh === 16 || c.dh === 32));
-  fs.writeFileSync(outPath, JSON.stringify({ cells: st.cells.size, tiles }));
+  // Keep only draws from the tile atlas: the frame, the cursor and the spawn
+  // marker are editor decorations drawn from other images entirely, so this
+  // asks where a pixel came from instead of guessing from its size.
+  const tiles = calls.filter((c) => c.sheet === 'johto-tileset.png');
+  fs.writeFileSync(outPath, JSON.stringify({ cells: st.cells.size, tiles, calls }));
 }).catch((e) => {
   console.error('editor boot failed:', e.message);
   process.exit(1);
@@ -226,6 +241,21 @@ def main() -> int:
         #    cells from there. A tile drawn at the wrong offset still looks like
         #    a tree, so this checks the rectangle, not the picture: anchored at
         #    (5,6) it is a 32x32 rect at (80,96), i.e. it reaches cell (6,7).
+        # 5b. the spawn marker is the app's character, drawn on the spawn cell.
+        #     It is not map content, but it must be the character: the user asked
+        #     for a marker they can recognise, not a red square.
+        marker = [c for c in payload["calls"]
+                  if c.get("sheet") == "player.png" and c["dw"] == 16 and c["dh"] == 16]
+        if not marker:
+            problems.append("penanda spawn tidak menggambar karakter")
+            print("  FAIL  penanda spawn tidak memakai sprite pemain")
+        elif (marker[0]["dx"], marker[0]["dy"]) != (5 * TILE, 6 * TILE):
+            problems.append("penanda spawn tidak berada di sel spawn")
+            print(f"  FAIL  penanda di ({marker[0]['dx'] // TILE},{marker[0]['dy'] // TILE}) "
+                  f"bukan di sel spawn (5,6)")
+        else:
+            print("  ok    penanda spawn memakai sprite pemain di sel spawn")
+
         tree_rects = [c for c in tiles if c["dw"] == 32 and c["dh"] == 32]
         if not tree_rects:
             problems.append("pohon 2x2 tidak digambar sama sekali")
