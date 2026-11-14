@@ -82,11 +82,22 @@ fun WorldCanvas(
             val px = (16 * scale).toFloat()
             drawMap(map, tiles, atlas, camera, scale, px)
 
-            // the player: a 16px frame from the walk sheet, drawn at the same
-            // integer scale as the tiles so it never resamples
+            // The player: a 32px frame from the walk sheet, drawn at the same
+            // integer scale as the tiles so it never resamples. It covers two
+            // cells, and it is anchored on the feet: the bottom row of the
+            // frame sits on the bottom of the player's cell, so the character
+            // stands on the tile instead of hovering a cell above it.
             val pScreenX = playerX * px - camera.x * scale
             val pScreenY = playerY * px - camera.y * scale
-            drawPlayer(pScreenX, pScreenY, px, facing, stepParity, walking, playerSheet)
+            drawPlayer(
+                x = pScreenX,
+                y = pScreenY,
+                px = px,
+                facing = facing,
+                stepParity = stepParity,
+                walking = walking,
+                sheet = playerSheet,
+            )
 
             // built blocks sit above the map layer
             for ((x, y, _) in map.entries()) {
@@ -238,6 +249,11 @@ private fun DrawScope.drawPlayer(
     walking: Boolean,
     sheet: ImageBitmap?,
 ) {
+    // The frame is two cells tall, so the feet sit on the bottom of the cell the
+    // player stands in and the head rises into the cell above.
+    val size = px * PlayerSprite.CELLS
+    val top = y + px * (1 - PlayerSprite.CELLS)      // y is the cell's top edge
+
     if (sheet != null) {
         // The sheet already carries a left row, generated as a mirror of the
         // right one, so drawing is a plain blit: no runtime flip, no second
@@ -250,8 +266,8 @@ private fun DrawScope.drawPlayer(
                 PlayerSprite.frameX(column), PlayerSprite.frameY(row),
             ),
             srcSize = androidx.compose.ui.unit.IntSize(PlayerSprite.TILE, PlayerSprite.TILE),
-            dstOffset = androidx.compose.ui.unit.IntOffset(x.toInt(), y.toInt()),
-            dstSize = androidx.compose.ui.unit.IntSize(px.toInt(), px.toInt()),
+            dstOffset = androidx.compose.ui.unit.IntOffset(x.toInt(), top.toInt()),
+            dstSize = androidx.compose.ui.unit.IntSize(size.toInt(), size.toInt()),
             filterQuality = FilterQuality.None,
         )
         return
@@ -259,18 +275,29 @@ private fun DrawScope.drawPlayer(
 
     // Fallback silhouette: hat, face, body, feet, in the same proportions as
     // the sheet so the camera reads the same either way.
-    val u = px / 16f
-    drawRect(Color(0xFF2C2418), Offset(x + 4 * u, y + 2 * u), androidx.compose.ui.geometry.Size(8 * u, 3 * u))
-    drawRect(Color(0xFFC53A2D), Offset(x + 3 * u, y + 3 * u), androidx.compose.ui.geometry.Size(10 * u, 2 * u))
-    drawRect(Color(0xFFF2C79A), Offset(x + 5 * u, y + 5 * u), androidx.compose.ui.geometry.Size(6 * u, 3 * u))
-    drawRect(Color(0xFF3E5C8A), Offset(x + 4 * u, y + 8 * u), androidx.compose.ui.geometry.Size(8 * u, 5 * u))
-    drawRect(Color(0xFF2C2418), Offset(x + 4 * u, y + 13 * u), androidx.compose.ui.geometry.Size(3 * u, 2 * u))
-    drawRect(Color(0xFF2C2418), Offset(x + 9 * u, y + 13 * u), androidx.compose.ui.geometry.Size(3 * u, 2 * u))
+    val u = size / 32f
+    // Proportions taken from the sheet's own layout: hair on top, a face band,
+    // a long vest, then the boots on the last row. u is one sheet pixel.
+    fun block(col: Long, left: Int, topRow: Int, w: Int, h: Int) {
+        drawRect(
+            color = Color(col),
+            topLeft = Offset(x + left * u, top + topRow * u),
+            size = androidx.compose.ui.geometry.Size(w * u, h * u),
+        )
+    }
+    block(0xFFA33864, 8, 3, 16, 9)      // hair mass
+    block(0xFFF4CBA2, 11, 7, 10, 7)     // face
+    block(0xFF4E8C53, 10, 18, 12, 8)    // vest
+    block(0xFF5C2B4C, 10, 26, 12, 2)    // belt
+    block(0xFFE9B64C, 15, 26, 3, 2)     // buckle
+    block(0xFF6E355D, 11, 28, 10, 3)    // trousers
+    block(0xFFEC9CB6, 11, 31, 4, 1)     // boots
+    block(0xFFEC9CB6, 18, 31, 4, 1)
     // eyes follow the facing direction, the cheapest way to read intent
-    val eyeY = y + 6 * u
-    val leftEye = x + (if (facing == Direction.LEFT) 5.5f else 6.5f) * u
-    drawRect(Color(0xFF2C2418), Offset(leftEye, eyeY), androidx.compose.ui.geometry.Size(u, u))
+    val eyeRow = 9
+    val leftEye = if (facing == Direction.LEFT) 12 else 13
+    block(0xFF2E1727, leftEye, eyeRow, 2, 1)
     if (facing != Direction.RIGHT) {
-        drawRect(Color(0xFF2C2418), Offset(x + 9 * u, eyeY), androidx.compose.ui.geometry.Size(u, u))
+        block(0xFF2E1727, 18, eyeRow, 2, 1)
     }
 }

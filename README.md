@@ -109,7 +109,7 @@ HeartGold:
 | Membangun | Tebang pohon (kayu), tambang batu, bangun blok. Blok yang kamu pasang ikut menutup jalan. |
 | Bertahan | Lapar turun seiring waktu; malam di tempat gelap mengurangi nyawa. |
 | Lampu | LAMPU membuat torch dari 1 batu + 1 serat, lalu memasangnya. Sel yang diterangi tetap terang di malam hari. |
-| Kontrol | Ketuk tujuan — karakter mencari jalur sendiri. Tidak ada joystick. |
+| Kontrol | **Joystick** di kiri bawah untuk berjalan (tahan arah), atau ketuk tujuan — karakter mencari jalur sendiri. |
 | Launcher | Dekati mesin di depan rumah, ketuk untuk membuka daftar aplikasi. |
 | Simpan | Otomatis: setiap aksi dan setiap menit, ke `filesDir/world.json`. Proses boleh dibunuh kapan saja. |
 
@@ -162,18 +162,23 @@ lebih kecil dari layar diletakkan di tengah.
 | Zona mati | 1/6 pandangan, dihitung dari viewport (bukan konstanta px) |
 | Kecepatan | ≤ 5 px/frame, loop 16 ms (~60 fps) |
 | Resize/zoom | rig diukur ulang, lalu pemain tetap dijaga di dalam pandangan |
-| Uji | 5 tes Kotlin + skenario di `tools/world_rules_sim.py` |
+| Uji | 76 tes Kotlin (dunia, input, sprite, joystick) + skenario di `tools/world_rules_sim.py` |
 
 **Sprite pemain**
 
-Pemain digambar dari lembar jalan 32×64 px (`app/src/main/assets/sprites/player.png`):
+Pemain digambar dari lembar jalan 64×128 px (`app/src/main/assets/sprites/player.png`):
 **empat baris** (atas, bawah, kiri, kanan — urutannya sama dengan `Direction.ordinal`) dan
-**dua kolom** frame. Satu frame 16×16 px, seukuran sel peta, jadi digambar pada skala bilangan
-bulat yang sama dengan tile dan tidak pernah di-resample.
+**dua kolom** frame. Satu frame **32×32 px**, dua sel peta, jadi digambar pada skala bilangan
+bulat yang sama dengan tile dan tidak pernah di-resample. Pada 16 px wajahnya hanya selebar
+empat piksel di panel 2560×1600: cukup untuk dua titik, tidak cukup untuk wajah.
+
+Karena frame-nya dua sel, sprite **ditambatkan di kaki**: baris bawah frame jatuh di dasar sel
+pemain, jadi kepala naik satu sel ke atas dan karakter berdiri di tanah, bukan melayang.
 
 | Hal | Nilai |
 | --- | --- |
-| Ukuran | 32 × 64 px (2 frame × 4 baris), tiap frame 16 × 16 px |
+| Ukuran | 64 × 128 px (2 frame × 4 baris), tiap frame 32 × 32 px = 2 × 2 sel |
+| Desain | Rambut magenta, rompi hijau, celana plum, sepatu pink — dari referensi yang digambar pengguna |
 | Animasi | Frame 1 hanya dipakai saat berjalan; bergantian tiap langkah, bukan oleh timer |
 | Arah kiri | Cermin dari baris kanan, dibuat saat generate — bukan digambar dua kali |
 | Berhenti | Selalu kembali ke frame 0, termasuk saat jalan dibatalkan ketukan baru |
@@ -181,18 +186,35 @@ bulat yang sama dengan tile dan tidak pernah di-resample.
 
 Lembar ini dihasilkan `tools/sprites.py`, bukan digambar tangan: satu sprite = beberapa baris
 di source, jadi perubahan art muncul sebagai diff yang bisa dibaca. Skrip itu juga menulis
-lembar pembanding `docs/sprites/options.png` (lima kandidat + strip ukuran tampil 1×–6×) dan
-satu PNG per kandidat lewat `--chars`.
+lembar pembanding `docs/sprites/player.png` (keempat arah, dua frame, di atas rumput).
 
 ```bash
-python3 tools/sprites.py                       # docs/sprites/options.png
-python3 tools/sprites.py --chars               # satu PNG per kandidat
-python3 tools/sprites.py --atlas C             # tulis ulang assets/sprites/player.png
+python3 tools/sprites.py            # docs/sprites/player.png, lembar pembanding
+python3 tools/sprites.py --atlas    # tulis ulang assets/sprites/player.png
 ```
 
 `tools/verify.py` merender ulang atlas dari skrip dan membandingkannya byte demi byte dengan
 yang ada di `assets/`, lalu mencocokkan ukurannya dengan konstanta di `game/PlayerSprite.kt`.
 Sprite yang basi atau berukuran salah jadi gagal build, bukan kejutan di tablet.
+
+**Joystick di kiri bawah**
+
+Layar gameplay punya satu kontrol di atas peta: cakram geser di sudut kiri bawah, tempat ibu jari
+beristirahat saat tablet dipegang dua tangan. Pegang satu arah dan karakter berjalan satu sel per
+140 ms; lepaskan dan ia berhenti. Ketuk peta tetap bisa dipakai — ketukan membatalkan pegangan, dan
+pegangan membatalkan jalur ketukan, jadi keduanya tidak pernah menggerakkan pemain bersamaan.
+
+| Hal | Nilai |
+| --- | --- |
+| Ukuran | Cakram radius 76 dp, kenop 30 dp, tetap sama di semua zoom |
+| Zona mati | 20% radius: ibu jari yang beristirahat tidak membuat karakter berjalan |
+| Diagonal | Sumbu yang lebih jauh menang, jadi hasilnya tidak pernah berubah-ubah |
+| Batas | Setiap langkah tetap dicek ke peta: menabrak dinding berhenti, tidak menembus |
+| Simpan | Satu kali saat jari dilepas, bukan tiap langkah |
+
+Aturannya ada di `game/Joystick.kt` tanpa impor Android, jadi zona mati dan diagonal diuji di JVM
+(`JoystickTest`). Gambarnya di `ui/components/MovePad.kt`; `tools/verify.py` memastikan joystick
+benar-benar terpasang di layar yang tampil, bukan hanya ada di kode.
 
 **Grid untuk mendesain layar**
 

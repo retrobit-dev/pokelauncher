@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.retrobit.pokelauncher.game.GameClock
+import dev.retrobit.pokelauncher.ui.components.MovePad
 import dev.retrobit.pokelauncher.ui.theme.HgColors
 import dev.retrobit.pokelauncher.ui.theme.HgText
 import kotlinx.coroutines.delay
@@ -65,6 +66,7 @@ fun GameHud(
     onEat: () -> Unit,
     onTill: () -> Unit,
     onPlaceLight: () -> Unit,
+    onMove: (dev.retrobit.pokelauncher.game.Direction?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // A tapped tree must answer immediately, or the world feels dead. The
@@ -144,11 +146,21 @@ fun GameHud(
             }
         }
 
-        // bottom-left: verb buttons, one tap each, no modifier keys on a tablet
+        // Bottom-left: the move pad. A thumb rests there on a tablet held in two
+        // hands, so it is the one corner that must hold nothing else.
+        MovePad(
+            onDirection = onMove,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 18.dp, bottom = 18.dp),
+        )
+
+        // Verbs sit to the right of the pad, out of the thumb's way: one tap
+        // each, no modifier keys on a tablet.
         Row(
             modifier = Modifier
                 .align(Alignment.BottomStart)
-                .padding(12.dp),
+                .padding(start = 190.dp, bottom = 22.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             VerbButton(label = "TANAM", enabled = true, onClick = onTill)

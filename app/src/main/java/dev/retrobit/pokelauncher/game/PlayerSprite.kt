@@ -5,12 +5,11 @@ package dev.retrobit.pokelauncher.game
  *
  * The sheet is four rows, one per direction, in the same order as
  * [Direction.ordinal] (up, down, left, right), and two columns of walk frames.
- * The art is 16x16, the size of a map cell, so a frame is drawn at the same
- * integer scale as a tile and never resamples.
+ * The art is 32x32, two map cells each way, so a frame is drawn at twice the
+ * tile size and still lands on whole pixels.
  *
- * Left is not drawn: it is the mirror of right. At 16px the two are
- * indistinguishable and a flip cannot drift out of sync the way a second hand
- * drawn copy would.
+ * Left is not drawn: it is the mirror of right. One drawn direction cannot
+ * drift out of sync with the other the way a second hand drawn copy would.
  *
  * This is the part worth testing, so it is a plain object with no Android
  * import: the drawing side only consumes [column] / [row].
@@ -18,7 +17,21 @@ package dev.retrobit.pokelauncher.game
 object PlayerSprite {
 
     const val FRAMES = 2
-    const val TILE = 16
+
+    /**
+     * Frame size in pixels. The art is 32x32, so the character is two map cells
+     * tall and stands a little wider than one: at 16px the face was four pixels
+     * wide on a 2560x1600 panel, which read as a marker rather than a person.
+     */
+    const val TILE = 32
+
+    /**
+     * How many map cells the frame covers. The world is drawn in 16px tiles, so
+     * the sprite is drawn at twice the tile size and anchored on the player's
+     * feet, not their top-left corner: a 32px sprite drawn from the cell corner
+     * would float one cell above the ground.
+     */
+    const val CELLS = 2
 
     /** Sheet width and height in pixels, for the atlas bounds check. */
     const val SHEET_WIDTH = FRAMES * TILE

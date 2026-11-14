@@ -51,6 +51,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.retrobit.pokelauncher.game.GameMap
 import dev.retrobit.pokelauncher.game.World
 import dev.retrobit.pokelauncher.ui.screens.SettingsScreen
+import dev.retrobit.pokelauncher.ui.components.MovePad
 import dev.retrobit.pokelauncher.ui.theme.HgColors
 import dev.retrobit.pokelauncher.ui.theme.HgText
 import dev.retrobit.pokelauncher.R
@@ -277,12 +278,15 @@ fun LauncherScreen(viewModel: LauncherViewModel) {
 }
 
 /**
- * Whether the home screen draws the world.
+ * Which home screen is drawn.
  *
- * Off while the UI is rebuilt step by step: the screen is a clean paper canvas
- * and every element comes back deliberately. The world, its rules and the
- * renderer are untouched behind this flag, so switching it to `true` restores
- * the previous home screen in one line.
+ * Off: the map and the character alone, with the move pad in the corner - the
+ * shape of the screen a player lives in. The full HUD (clock, vitals, verb
+ * buttons) is built and still in [HomeSurface] behind this flag, but it is not
+ * what the home screen shows: the panel is the map, and a joystick is the one
+ * control that has to be on it.
+ *
+ * On: the old home screen, HUD and all, in one line.
  */
 private const val SHOW_WORLD = false
 
@@ -315,26 +319,40 @@ private fun HomeSurface(
                 game.onViewportChanged(viewPx.first, viewPx.second, state.scale)
             }
 
-            WorldCanvas(
-                map = state.map,
-                tiles = state.tiles,
-                atlas = state.atlas,
-                playerSheet = state.playerSheet,
-                camera = state.camera,
-                playerX = world.playerX,
-                playerY = world.playerY,
-                facing = world.facing,
-                stepParity = state.stepParity,
-                walking = state.walking,
-                scale = state.scale,
-                nightAmount = 0f,
-                litAt = { _, _ -> false },
-                builtAt = { x, y -> world.builtAt(x, y) != null },
-                cropsAt = { x, y -> world.cropAt(x, y)?.stage(state.day) ?: 0 },
-                onCellTap = game::tapCell,
-                onZoom = game::zoomBy,
-                modifier = Modifier.fillMaxSize(),
-            )
+            // The map, the character, and the pad. A Box so the pad floats over
+            // the world instead of taking a slice of it: the panel is the map.
+            Box(modifier = Modifier.fillMaxSize()) {
+                WorldCanvas(
+                    map = state.map,
+                    tiles = state.tiles,
+                    atlas = state.atlas,
+                    playerSheet = state.playerSheet,
+                    camera = state.camera,
+                    playerX = world.playerX,
+                    playerY = world.playerY,
+                    facing = world.facing,
+                    stepParity = state.stepParity,
+                    walking = state.walking,
+                    scale = state.scale,
+                    nightAmount = 0f,
+                    litAt = { _, _ -> false },
+                    builtAt = { x, y -> world.builtAt(x, y) != null },
+                    cropsAt = { x, y -> world.cropAt(x, y)?.stage(state.day) ?: 0 },
+                    onCellTap = game::tapCell,
+                    onZoom = game::zoomBy,
+                    modifier = Modifier.fillMaxSize(),
+                )
+
+                // Bottom-left, where a thumb rests. It is drawn over the map and
+                // only its own disc takes touches: the rest of the screen still
+                // taps through to the canvas to walk somewhere.
+                MovePad(
+                    onDirection = game::holdDirection,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 18.dp, bottom = 18.dp),
+                )
+            }
         }
         return
     }
@@ -415,6 +433,7 @@ private fun HomeSurface(
             onEat = game::eat,
             onTill = game::useUnderfoot,
             onPlaceLight = game::craftLight,
+            onMove = game::holdDirection,
         )
     }
 }

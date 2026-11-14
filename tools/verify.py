@@ -178,6 +178,44 @@ def check_manifest() -> None:
 
 
 # ------------------------------------------------- composable signature check
+def top_level_named_args(args: str) -> list[str]:
+    """Named arguments of a call, ignoring anything nested inside one of them.
+
+    `MovePad(modifier = Modifier.padding(start = 18.dp))` names exactly one
+    argument of MovePad: `modifier`. The `start =` belongs to padding, and
+    reading it as a MovePad parameter is a false positive that would make every
+    modifier chain with named arguments look like a bug.
+    """
+    found: list[str] = []
+    depth = 0
+    expect_name = True
+    token = ""
+    for char in args:
+        if char in "([{":
+            depth += 1
+            token = "" if depth > 1 else token
+            continue
+        if char in ")]}":
+            depth -= 1
+            continue
+        if depth:
+            continue
+        if char == ",":
+            expect_name = True
+            token = ""
+            continue
+        if char == "=" and expect_name:
+            name = token.strip()
+            if name.isidentifier():
+                found.append(name)
+            expect_name = False
+            token = ""
+            continue
+        if expect_name:
+            token += char
+    return found
+
+
 def check_composable_signatures() -> None:
     """Every named argument at a call site must exist in the declaration.
 
@@ -225,7 +263,7 @@ def check_composable_signatures() -> None:
                     continue
                 _, end = parse_params(src, call.start())
                 args = src[call.end():end]
-                for arg in re.findall(r"(?:^|,)\s*(\w+)\s*=(?!=)", args):
+                for arg in top_level_named_args(args):
                     if arg in builtin_like:
                         continue
                     if not any(arg in signature for signature in signatures):
@@ -527,25 +565,29 @@ def check_preview_screen(path: str) -> None:
     if hits < 200 and not map_empty:
         fail(f"only {hits} grass samples on the panel; the field render is missing")
 
-    # 3c. the player sprite is drawn. A 16px sprite scaled into the panel is a
-    # few dozen pixels across, so sampling on a coarse grid would miss it:
-    # scan for a solid run of shirt red instead.
-    red = (0xC5, 0x3A, 0x2D)
-    found = False
-    for y in range(panel_y + 4, panel_y + PANEL[1] - 4, 3):
-        run = 0
-        for x in range(panel_x + 4, panel_x + PANEL[0] - 4, 3):
-            if near(pixel(x, y)[:3], red, 12):
-                run += 1
-                if run >= 3:
-                    found = True
-                    break
-            else:
-                run = 0
-        if found:
-            break
-    if not found:
-        fail("the player sprite is not on the tablet: no shirt red anywhere on the panel")
+    # 3c. the player sprite is drawn. A 32px sprite scaled into the panel is
+    # about a hundred pixels across, so sampling on a coarse grid would miss it:
+    # scan for a solid run of the character's own colours. Hair and vest are the
+    # two largest areas of the design, and neither is used by any tile, so a run
+    # of either is the character and not scenery.
+    colours = ((0xA3, 0x38, 0x64), (0x4E, 0x8C, 0x53))   # hair, vest
+    for colour in colours:
+        found = False
+        for y in range(panel_y + 4, panel_y + PANEL[1] - 4, 3):
+            run = 0
+            for x in range(panel_x + 4, panel_x + PANEL[0] - 4, 3):
+                if near(pixel(x, y)[:3], colour, 12):
+                    run += 1
+                    if run >= 3:
+                        found = True
+                        break
+                else:
+                    run = 0
+            if found:
+                break
+        if not found:
+            fail(f"the player sprite is not on the tablet: no {colour} anywhere "
+                 "on the panel")
 
     # 4. and the camera is still there, on top of the screen
     lens = pixel(panel_x + 96, panel_y + 96)
@@ -1022,24 +1064,26 @@ def check_player_sprite() -> None:
 
     before = open(assets, "rb").read()
     result = subprocess.run(
-        [sys.executable, os.path.join(ROOT, "tools", "sprites.py"), "--atlas", "C"],
+        [sys.executable, os.path.join(ROOT, "tools", "sprites.py"), "--atlas"],
         capture_output=True, text=True,
     )
     if result.returncode != 0:
-        fail(f"tools/sprites.py --atlas C failed: {result.stderr.strip()[:200]}")
+        fail(f"tools/sprites.py --atlas failed: {result.stderr.strip()[:200]}")
         return
     if open(assets, "rb").read() != before:
         fail("player.png changed when regenerated; commit the regenerated sheet")
 
-    # Layout must agree with PlayerSprite: 2 frames wide, 4 rows tall.
+    # Layout must agree with PlayerSprite: 2 frames wide, 4 rows tall, and the
+    # frame is 32x32 - two map cells, which is the size the art was drawn at.
     head = open(assets, "rb").read(33)
     if head[:8] != b"\x89PNG\r\n\x1a\n":
         fail("player.png is not a PNG")
         return
     import struct
     width, height = struct.unpack(">II", head[16:24])
-    if (width, height) != (32, 64):
-        fail(f"player.png is {width}x{height}; PlayerSprite expects 32x64 (2 frames x 4 rows)")
+    if (width, height) != (64, 128):
+        fail(f"player.png is {width}x{height}; PlayerSprite expects 64x128 "
+             f"(2 frames x 4 rows of 32px)")
 
     # The code that reads it must agree on the numbers.
     sprite = os.path.join(
@@ -1052,12 +1096,103 @@ def check_player_sprite() -> None:
     text = open(sprite, encoding="utf-8").read()
     for needle, why in (
         ("const val FRAMES = 2", "the sheet is 2 frames wide"),
-        ("const val TILE = 16", "frames are one 16px map cell"),
+        ("const val TILE = 32", "frames are 32px, two map cells"),
+        ("const val CELLS = 2", "a frame covers two cells, so the feet can anchor"),
         ("SHEET_WIDTH = FRAMES * TILE", "width must be derived, not typed twice"),
         ("SHEET_HEIGHT = 4 * TILE", "there are four directions, so four rows"),
     ):
         if needle not in text:
             fail(f"PlayerSprite.kt should declare {needle!r}: {why}")
+
+
+def check_move_pad() -> None:
+    """The pad must exist, be reachable, and be the thing that moves the player.
+
+    A joystick is easy to draw and easy to leave unconnected: the disc appears,
+    the thumb slides, and nothing happens. These checks tie the drawing to the
+    rule to the ViewModel, in that order.
+    """
+    pad = os.path.join(ROOT, "app", "src", "main", "java", "dev", "retrobit",
+                       "pokelauncher", "ui", "components", "MovePad.kt")
+    rule = os.path.join(ROOT, "app", "src", "main", "java", "dev", "retrobit",
+                        "pokelauncher", "game", "Joystick.kt")
+    screen = os.path.join(ROOT, "app", "src", "main", "java", "dev", "retrobit",
+                          "pokelauncher", "ui", "GameScreen.kt")
+    model = os.path.join(ROOT, "app", "src", "main", "java", "dev", "retrobit",
+                         "pokelauncher", "ui", "GameViewModel.kt")
+    for path, name in ((pad, "MovePad.kt"), (rule, "Joystick.kt")):
+        if not os.path.exists(path):
+            fail(f"{name} is missing; the tablet has no way to move the player")
+            return
+
+    pad_src = open(pad, encoding="utf-8").read()
+    rule_src = open(rule, encoding="utf-8").read()
+    screen_src = open(screen, encoding="utf-8").read()
+    model_src = open(model, encoding="utf-8").read()
+
+    # 1. the rule: a dead zone and a diagonal rule, not just four ifs
+    if "DEAD_ZONE" not in rule_src:
+        fail("Joystick.kt: a pad without a dead zone walks on a resting thumb")
+    if "fun direction(" not in rule_src or "fun knob(" not in rule_src:
+        fail("Joystick.kt: the pad needs its direction rule and its knob clamp")
+
+    # 2. the drawing: a real gesture that reports a release
+    if "onDirection(null)" not in pad_src:
+        fail("MovePad.kt: lifting the thumb must report null, or the player "
+             "keeps walking after the finger is gone")
+    if "awaitEachGesture" not in pad_src:
+        fail("MovePad.kt: the pad must track a held finger, not a single tap")
+
+    home = os.path.join(ROOT, "app", "src", "main", "java", "dev", "retrobit",
+                        "pokelauncher", "ui", "LauncherScreen.kt")
+    home_src = open(home, encoding="utf-8").read()
+
+    # 3. the wiring: the pad is on the home screen itself, connected to the game.
+    #    It used to be reachable only from the full-HUD branch, which is off, so
+    #    the pad would have been built and never shown. Checking the branch that
+    #    actually renders is the difference between "exists" and "works".
+    if "SHOW_WORLD = false" not in home_src:
+        fail("LauncherScreen.kt: this check assumes the map-only home screen")
+    # The branch that renders, cut at the line that starts the next branch.
+    #
+    # Two earlier versions of this slice were wrong in ways that looked right:
+    # splitting on a `return` cut at the early return for a missing world, and
+    # splitting on `GameHud(` cut on the *parameter* `onOpenLauncher: () ->
+    # Unit` of the other branch's call, not on the call itself. Both left a body
+    # with no pad in it, so the check below never fired. The next branch starts
+    # with this exact line, which appears once in the file.
+    plain = home_src.split("if (!SHOW_WORLD) {", 1)[1]
+    seam = "\n    val state by game.state.collectAsState()"
+    if seam not in plain:
+        fail("LauncherScreen.kt: cannot find the second branch; the move-pad "
+             "check would be reading the wrong code")
+        return
+    plain = plain.split(seam, 1)[0]
+    if "MovePad(" not in plain:
+        fail("LauncherScreen.kt: the visible home screen has no move pad; the "
+             "player can see the world but cannot walk in it")
+    if "onDirection = game::holdDirection" not in plain:
+        fail("LauncherScreen.kt: the pad is drawn but never connected to the game")
+    if "MovePad(" in plain and \
+            "Alignment.BottomStart" not in plain.split("MovePad(")[1][:400]:
+        fail("LauncherScreen.kt: the pad belongs bottom-left, where a thumb rests")
+    # The pad sits on the map, so the map must be under it: a Column would give
+    # the pad its own strip and shrink the world.
+    if "Box(modifier = Modifier.fillMaxSize())" not in plain:
+        fail("LauncherScreen.kt: the pad must float over the map, not take a row")
+
+    # The hud still needs the callback for the branch behind the flag.
+    if "onMove: (dev.retrobit.pokelauncher.game.Direction?) -> Unit" not in screen_src:
+        fail("GameScreen.kt: GameHud needs the pad's callback")
+    if "fun holdDirection(" not in model_src:
+        fail("GameViewModel.kt: nothing turns a held direction into a step")
+    # Searched to the end of the function, not a fixed window: the comment that
+    # explains the cancellation made the window too short, and a guard that
+    # fails on a comment is a guard nobody keeps.
+    hold = model_src.split("fun holdDirection(", 1)[1].split("\n    /**", 1)[0]
+    if "walkJob?.cancel()" not in hold:
+        fail("GameViewModel.kt: the pad must cancel a tap-to-walk path, or the "
+             "two move the player at the same time")
 
 
 def check_save_is_tied_to_its_map() -> None:
@@ -1154,6 +1289,7 @@ def main() -> int:
     check_player_sprite()
     check_zoom_agreement()
     check_save_is_tied_to_its_map()
+    check_move_pad()
 
     for problem in problems:
         print("FAIL", problem)

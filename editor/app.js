@@ -339,6 +339,54 @@ function drawGameFrame(ctx, size, w, h) {
   const py = frame.spawn.y * size - state.camera.y;
   drawPlayerMarker(ctx, px, py, size);
 
+  // The move pad, bottom-left of the frame, in the same proportion the app
+  // uses: 76 dp of a 2560 px wide panel, which is 2.97% of the width. Drawing
+  // it here means the editor answers "what will the player see", and the pad is
+  // part of that answer now.
+  drawMovePad(ctx, sx, sy, frame.w, frame.h);
+
+  ctx.restore();
+}
+
+/**
+ * The corner move pad, scaled with the frame.
+ *
+ * Sized as a fraction of the frame, not in cells: on the device the pad is a
+ * fixed number of dp over a fixed panel, so it stays the same physical size at
+ * every zoom. Taking it from the cell size would make it grow with the map and
+ * cover the world at 8x.
+ */
+function drawMovePad(ctx, sx, sy, frameW, frameH) {
+  const radius = frameW * (76 / 2560);         // Joystick.RADIUS_DP on the panel
+  const knob = frameW * (30 / 2560);
+  const cx = sx + frameW * (18 / 2560) + radius;
+  const cy = sy + frameH - frameH * (18 / 2560) - radius;
+  if (radius < 3) return;                      // too small to read: leave it out
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(251, 243, 220, .55)';
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(59, 47, 30, .55)';
+  ctx.lineWidth = Math.max(1, radius * 0.03);
+  ctx.stroke();
+
+  // a faint cross, so the four directions read without four buttons
+  ctx.strokeStyle = 'rgba(59, 47, 30, .12)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(cx - radius * 0.55, cy); ctx.lineTo(cx + radius * 0.55, cy);
+  ctx.moveTo(cx, cy - radius * 0.55); ctx.lineTo(cx, cy + radius * 0.55);
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(251, 243, 220, .95)';
+  ctx.beginPath();
+  ctx.arc(cx, cy, knob, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(59, 47, 30, .75)';
+  ctx.lineWidth = Math.max(1, radius * 0.03);
+  ctx.stroke();
   ctx.restore();
 }
 
@@ -346,9 +394,10 @@ function drawGameFrame(ctx, size, w, h) {
  * The player at the spawn point.
  *
  * The sheet is the one the app loads (`app/src/main/assets/sprites/player.png`):
- * two frames wide, one row per direction, DOWN first. Frame 0 of the DOWN row is
- * the standing pose, which is what a spawn marker is. A halo underneath keeps
- * the character readable on dark tiles and at 0.5x, where a 16px sprite is 8px.
+ * two frames wide, one row per direction, DOWN first, 32x32 per frame. Frame 0
+ * of the DOWN row is the standing pose, which is what a spawn marker is. The
+ * frame is two cells tall, so it is drawn upward from the spawn cell: the feet
+ * land in the cell, exactly as the game draws it.
  */
 function drawPlayerMarker(ctx, px, py, size) {
   ctx.save();
@@ -356,12 +405,15 @@ function drawPlayerMarker(ctx, px, py, size) {
   ctx.fillStyle = 'rgba(251, 243, 220, .35)';
   ctx.fillRect(px, py, size, size);
   if (state.playerSprite) {
-    const frame = 16;              // one cell in the sheet
+    const frame = 32;              // one frame in the sheet: 32x32, two cells
     ctx.imageSmoothingEnabled = false;
+    // Frame 0 of the DOWN row, drawn two cells tall and anchored on the feet:
+    // the same rule the game uses, so the marker stands exactly where the
+    // character will.
     ctx.drawImage(
       state.playerSprite,
-      0, 16, frame, frame,        // frame 0 of the DOWN row
-      px, py, size, size,
+      0, 32, frame, frame,
+      px, py + size - size * 2, size * 2, size * 2,
     );
   } else {
     // the sheet failed to load: a plain block still says "the player is here"

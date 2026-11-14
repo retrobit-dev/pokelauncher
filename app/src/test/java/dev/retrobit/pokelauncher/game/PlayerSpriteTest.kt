@@ -47,15 +47,24 @@ class PlayerSpriteTest {
     }
 
     @Test
+    fun `the frame is two map cells tall`() {
+        // The art is 32x32 while a map cell is 16x16. If these two drift apart
+        // the sprite is either drawn half size or hangs a cell below the feet.
+        assertEquals(32, PlayerSprite.TILE)
+        assertEquals(2, PlayerSprite.CELLS)
+        assertEquals(GameMap.TILE * PlayerSprite.CELLS, PlayerSprite.TILE)
+    }
+
+    @Test
     fun `frames stay inside the sheet`() {
         assertEquals(0, PlayerSprite.frameX(0))
-        assertEquals(16, PlayerSprite.frameX(1))
+        assertEquals(32, PlayerSprite.frameX(1))
         // a bad index must clamp, never read past the end of the atlas
-        assertEquals(16, PlayerSprite.frameX(9))
+        assertEquals(32, PlayerSprite.frameX(9))
         assertEquals(0, PlayerSprite.frameX(-3))
-        assertEquals(48, PlayerSprite.frameY(3))
-        assertEquals(48, PlayerSprite.frameY(9))
-        assertEquals(32, PlayerSprite.SHEET_WIDTH)
-        assertEquals(64, PlayerSprite.SHEET_HEIGHT)
+        assertEquals(96, PlayerSprite.frameY(3))
+        assertEquals(96, PlayerSprite.frameY(9))
+        assertEquals(64, PlayerSprite.SHEET_WIDTH)
+        assertEquals(128, PlayerSprite.SHEET_HEIGHT)
     }
 }

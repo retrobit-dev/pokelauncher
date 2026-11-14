@@ -52,6 +52,15 @@ class GameViewModel(context: Context) : ViewModel() {
     private var walkJob: Job? = null
 
     /**
+     * The pad's hold, kept apart from [walkJob] on purpose.
+     *
+     * A tap-to-walk path and a held direction are two different intentions, and
+     * one must cancel the other: starting a pad walk while a path is running
+     * used to leave the path moving the player one cell per tick underneath.
+     */
+    private var padJob: Job? = null
+
+    /**
      * Bumped on every new walk. A cancelled job clears the walk flags in its
      * `finally`, and cancellation is cooperative: without this token that
      * cleanup could land after the replacement job started and stop its legs.
@@ -248,6 +257,72 @@ class GameViewModel(context: Context) : ViewModel() {
         }
     }
 
+    /**
+     * The pad is being held in [direction], or let go when null.
+     *
+     * One step per tick, checked against the world exactly like a tap-to-walk
+     * step: a held direction walks into a wall and simply stops, instead of
+     * sliding through it. Repeating the same direction does nothing, so a
+     * resting thumb costs no coroutines.
+     */
+    fun holdDirection(direction: Direction?) {
+        // Idempotent on purpose. The pad reports the *current* direction on
+        // every touch event, so a still thumb sends "same direction" many times
+        // a second and a lift sends "null" more than once; reacting to the
+        // repeats would cancel and restart the walk (or write the save) each
+        // time.
+        if (heldDirection == direction) {
+            // Already holding this direction: nothing to do. If the walk was
+            // stopped by a wall the job is done, but re-pressing that same
+            // direction is the player asking again, so that case falls through.
+            if (padJob?.isActive == true || direction == null) return
+        }
+        heldDirection = direction
+        padJob?.cancel()
+        padJob = null
+        if (direction == null) {
+            if (walkJob?.isActive != true) {
+                _state.value = _state.value.copy(walking = false, stepParity = false)
+            }
+            persist()                  // the walk is over: one write, on release
+            return
+        }
+
+        // A path to a tapped cell would fight the pad; the pad is the newer
+        // instruction, so the path loses.
+        walkJob?.cancel()
+        walkJob = null
+
+        padJob = viewModelScope.launch {
+            while (true) {
+                val current = _state.value
+                val w = current.world ?: break
+                if (!w.step(direction)) {
+                    // Blocked: stop cleanly, but stay held so that stepping
+                    // back the other way still works without lifting off.
+                    if (heldDirection == direction) {
+                        _state.value = _state.value.copy(walking = false, stepParity = false)
+                        persist()          // stopped against a wall: save where we are
+                    }
+                    break
+                }
+                _state.value = _state.value.copy(
+                    revision = current.revision + 1,
+                    walking = true,
+                    stepParity = !current.stepParity,
+                )
+                // Not persisted per step: at 140 ms a step that is seven writes
+                // a second, and a walk across the map would rewrite the save
+                // dozens of times for one arrival. The pad stops persist once
+                // on release, which is the state worth keeping.
+                delay(STEP_MILLIS)
+            }
+        }
+    }
+
+    /** Read by [holdDirection] so repeating the same direction is free. */
+    private var heldDirection: Direction? = null
+
     fun tapCell(cellX: Int, cellY: Int) {
         val current = _state.value
         current.world?.waterDay = dayOf()
@@ -272,6 +347,11 @@ class GameViewModel(context: Context) : ViewModel() {
 
     private fun walkTo(goalX: Int, goalY: Int) {
         walkJob?.cancel()
+        // A tap replaces the pad's hold: the two must never drive the player at
+        // the same time, or the path and the pad fight over every cell.
+        padJob?.cancel()
+        padJob = null
+        heldDirection = null
         val world = _state.value.world ?: return
         val path = Pathfinder.find(world.playerX, world.playerY, goalX, goalY) { x, y ->
             world.canStand(x, y)

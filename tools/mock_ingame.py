@@ -84,10 +84,13 @@ def rect(img,x,y,w,h,col):
 # disagree with the game about what the player looks like.
 sp=doc['spawn']; bx,by=sp['x']*PX, sp['y']*PX
 player=read_png(os.path.join(ROOT,'app/src/main/assets/sprites/player.png'))
-for yy in range(16):
-    for xx in range(16):
-        r,g,b,a=player.px(xx,16+yy)
-        if a: world.dot(bx+xx,by+yy,(r,g,b))
+# 32x32 frames, row 1 is DOWN, and the frame is anchored on the feet: the bottom
+# of the frame sits on the bottom of the spawn cell, so the head rises one cell.
+FRAME=32
+for yy in range(FRAME):
+    for xx in range(FRAME):
+        r,g,b,a=player.px(xx,FRAME+yy)
+        if a: world.dot(bx+xx,by+yy+ (PX-FRAME), (r,g,b))
 
 # No crops, no torches, no invented scenery.
 #
@@ -148,7 +151,53 @@ def text(img,x,y,s,k,col):
 
 W,H=scale.w,scale.h
 
+# The move pad, bottom-left: the same disc and knob the app draws, from the same
+# numbers (Joystick.kt: 76 dp radius, 30 dp knob, 20% dead zone). Drawn here
+# because the pad is part of the screen, and a tablet shot that omits a control
+# the player uses every few seconds is a picture of a different app.
+PAD_R = 76
+def draw_pad():
+    cx, cy = PAD_R + 18, H - PAD_R - 18
+    for y in range(-PAD_R, PAD_R + 1):
+        for x in range(-PAD_R, PAD_R + 1):
+            if x * x + y * y <= PAD_R * PAD_R:
+                # paper at 55% over the grass, like Compose draws it
+                gx, gy = cx + x, cy + y
+                if 0 <= gx < W and 0 <= gy < H:
+                    r0, g0, b0, _ = scale.px(gx, gy)
+                    scale.dot(gx, gy, (
+                        int(r0 * 0.45 + PAPER[0] * 0.55),
+                        int(g0 * 0.45 + PAPER[1] * 0.55),
+                        int(b0 * 0.45 + PAPER[2] * 0.55),
+                    ))
+    # rim, drawn as a ring of ink
+    for i in range(360 * 2):
+        import math
+        a = i / 2 * math.pi / 180
+        for w in (0, 1):
+            x = int(cx + (PAD_R - w) * math.cos(a))
+            y = int(cy + (PAD_R - w) * math.sin(a))
+            if 0 <= x < W and 0 <= y < H:
+                scale.dot(x, y, INK)
+    # the knob, resting at the centre
+    for y in range(-30, 31):
+        for x in range(-30, 31):
+            if x * x + y * y <= 900:
+                gx, gy = cx + x, cy + y
+                if 0 <= gx < W and 0 <= gy < H:
+                    scale.dot(gx, gy, PAPER)
+    for i in range(360):
+        import math
+        a = i * math.pi / 180
+        x = int(cx + 30 * math.cos(a)); y = int(cy + 30 * math.sin(a))
+        if 0 <= x < W and 0 <= y < H:
+            scale.dot(x, y, INK)
+
+
 def draw_hud():
+  # Unused: the home screen has no HUD (see the call site). Kept while the HUD
+  # branch behind SHOW_WORLD still exists, so turning it on has a picture to
+  # compare against; delete both together.
   # The MatePad Mini camera sits inside the panel, top-left. GameHud applies
   # WindowInsets.displayCutout, so everything here starts to its right.
   CUTOUT = 116
@@ -161,9 +210,9 @@ def draw_hud():
   text(scale,CUTOUT+28,192,'1831',4,FAINT)
 
   for i in range(3):
-      panel(scale,28+i*250,H-148,224,120)
-      rect(scale,60+i*250,H-108,160,10,INK)
-      rect(scale,60+i*250,H-84,104,8,FAINT)
+      panel(scale,250+i*250,H-148,224,120)
+      rect(scale,282+i*250,H-108,160,10,INK)
+      rect(scale,282+i*250,H-84,104,8,FAINT)
 
   # top-right: the menu button that opens settings and the app list
   rect(scale,W-116,28,88,88,INK)
@@ -179,8 +228,13 @@ def draw_hud():
   rect(scale,W-470,H-66,300,9,FAINT)
 
 
+# The home screen shows the map, the character and the pad - no clock, no
+# vitals, no verb buttons. That is the screen the app actually draws
+# (LauncherScreen: SHOW_WORLD = false), so the tablet shot draws the same thing;
+# a mock with a HUD the device does not have would be a picture of another app.
+# --field is the same picture with no controls at all.
 if not FIELD:
-    draw_hud()
+    draw_pad()
 
 scale.to_png(OUT)
 print(OUT, scale.w,'x',scale.h)

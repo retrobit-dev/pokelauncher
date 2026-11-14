@@ -244,17 +244,19 @@ def main() -> int:
         # 5b. the spawn marker is the app's character, drawn on the spawn cell.
         #     It is not map content, but it must be the character: the user asked
         #     for a marker they can recognise, not a red square.
+        # 32x32 frames, drawn two cells tall and anchored on the feet: the feet
+        # land in the spawn cell, so the top edge is one cell above it.
         marker = [c for c in payload["calls"]
-                  if c.get("sheet") == "player.png" and c["dw"] == 16 and c["dh"] == 16]
+                  if c.get("sheet") == "player.png" and c["dw"] == 32 and c["dh"] == 32]
         if not marker:
             problems.append("penanda spawn tidak menggambar karakter")
             print("  FAIL  penanda spawn tidak memakai sprite pemain")
-        elif (marker[0]["dx"], marker[0]["dy"]) != (5 * TILE, 6 * TILE):
-            problems.append("penanda spawn tidak berada di sel spawn")
+        elif (marker[0]["dx"], marker[0]["dy"]) != (5 * TILE, 5 * TILE):
+            problems.append("penanda spawn tidak berdiri di sel spawn")
             print(f"  FAIL  penanda di ({marker[0]['dx'] // TILE},{marker[0]['dy'] // TILE}) "
-                  f"bukan di sel spawn (5,6)")
+                  f"bukan satu sel di atas spawn (5,6)")
         else:
-            print("  ok    penanda spawn memakai sprite pemain di sel spawn")
+            print("  ok    penanda spawn memakai sprite pemain, kaki di sel spawn")
 
         tree_rects = [c for c in tiles if c["dw"] == 32 and c["dh"] == 32]
         if not tree_rects:

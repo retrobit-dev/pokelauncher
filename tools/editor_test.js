@@ -287,12 +287,17 @@ editor.boot().then(() => {
   const pad = new Element('canvas');
   const pctx = pad.getContext('2d');
   editor.drawPlayerMarker(pctx, 0, 0, 16);
-  const spriteDraw = pad._draws.filter((a) => a.length === 9 && a[3] === 16 && a[4] === 16);
+  const spriteDraw = pad._draws.filter((a) => a.length === 9 && a[3] === 32 && a[4] === 32);
   check('karakter digambar dari frame DOWN', spriteDraw.length, 1);
+  // 32x32 frames, two rows down the sheet: DOWN is row 1.
   check('frame yang dipakai: kolom 0 baris 1', spriteDraw.length
-    ? [spriteDraw[0][1], spriteDraw[0][2]] : null, [0, 16]);
-  check('mengisi satu sel penuh', spriteDraw.length
-    ? [spriteDraw[0][7], spriteDraw[0][8]] : null, [16, 16]);
+    ? [spriteDraw[0][1], spriteDraw[0][2]] : null, [0, 32]);
+  // The frame covers two cells and is anchored on the feet, so at a 16px cell
+  // it is 32px tall and its top edge sits one cell above the spawn cell.
+  check('setinggi dua sel, kaki di sel spawn', spriteDraw.length
+    ? [spriteDraw[0][7], spriteDraw[0][8]] : null, [32, 32]);
+  check('tambat di kaki, bukan di pojok atas', spriteDraw.length
+    ? [spriteDraw[0][5], spriteDraw[0][6]] : null, [0, -16]);
   // the fallback square must not be used while the sheet is loaded
   const redSquares = (pad._fills || []).filter((a) => a[2] > 0 && a[2] < 16 && String(a[3]).includes('.95'));
   check('tidak memakai kotak merah saat sprite ada', redSquares.length, 0);

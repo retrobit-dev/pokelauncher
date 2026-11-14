@@ -1,23 +1,34 @@
 #!/usr/bin/env python3
-"""Draws sprite candidates for the player, as an option sheet.
+"""Draws the player sprite the app loads.
 
-    python3 tools/sprites.py                   # docs/sprites/options.png
-    python3 tools/sprites.py --chars           # per character contact sheet
+    python3 tools/sprites.py                  # docs/sprites/player.png, a review sheet
+    python3 tools/sprites.py --atlas          # writes app/src/main/assets/sprites/player.png
 
-Why a generator and not a PNG: a sprite is a list of rows in the source, so a
-change is one line in a diff, not a binary the reviewer has to open. It also
-means the palette can be swapped for a variant without redrawing anything.
+Why a generator and not a PNG: a sprite is a list of shapes in the source, so a
+change is a few lines in a diff, not a binary the reviewer has to open. It also
+means the review sheet and the asset can never disagree.
 
-The sprite is 16x16, the same cell as the map, and shares the HeartGold palette
-(red cap, pale skin, blue jacket, dark boots). Four directions, two walk frames
-each: the grid the engine already expects.
+The character is 32x32 - two map cells wide and two tall - because the art has
+to read on a 2560x1600 panel used at arm's length. At 16px the face was four
+pixels wide: there was room for two dots and nothing else. Two cells give a
+face with brows, a mouth, blush, and hair with highlights, which is what makes
+it look like a person rather than a marker.
 
-Shading rules, so every candidate reads the same at 3x on the tablet:
-  - light from the top-left, one pixel of shadow on the right and bottom rim;
-  - the outline is a single dark colour, never pure black, so it sits on grass
-    without looking like a hole;
-  - feet stay on the bottom row, and the body never uses the last two columns,
-    so the sprite fits the cell without bleeding into the next one.
+Design, from the reference the user drew:
+  - magenta hair, swooping, longer on the left, with light streaks
+  - green vest with a plum lining at the shoulders
+  - plum trousers, a dark belt with a gold buckle
+  - pink boots
+  - pale skin, one relaxed eye line, a small mouth
+
+Shading rules, so every frame reads the same at 10x on the tablet:
+  - light from the top-left; the shadow side is one darker tone, never a gradient
+  - the outline is a single deep-plum colour, not black, so the character sits on
+    grass and on stone without looking cut out
+  - shapes are defined as horizontal spans, so the silhouette is a table you can
+    read and edit; there are no floating single pixels to fall out of sync
+  - feet stay on the bottom row; the top row stays empty so the outline always
+    has somewhere to go
 """
 from __future__ import annotations
 
@@ -30,22 +41,30 @@ sys.path.insert(0, HERE)
 
 from tileset.pixels import Image  # noqa: E402
 
-W = H = 16
+# The frame is 32x32: see the module docstring. Kept as one constant because the
+# atlas, the review sheet and the Kotlin reader all have to agree on it.
+W = H = 32
+
 PAL = {
-    "K": (0x2C, 0x24, 0x18),   # outline, dark warm brown (never pure black)
-    "R": (0xC5, 0x3A, 0x2D),   # cap and jacket, HeartGold red
-    "r": (0x9A, 0x2A, 0x20),   # red shadow
-    "S": (0xF2, 0xC7, 0x9A),   # skin
-    "s": (0xD8, 0xA5, 0x7A),   # skin shadow
-    "B": (0x3E, 0x5C, 0x8A),   # trousers / bag strap blue
-    "b": (0x2C, 0x42, 0x66),   # blue shadow
-    "W": (0xFF, 0xFB, 0xF0),   # eye white
-    "Y": (0xE8, 0xC5, 0x5C),   # hair / gold trim
-    "G": (0x6B, 0x8F, 0x5A),   # bag, muted green
-    "g": (0x4E, 0x6B, 0x42),   # bag shadow
-    "H": (0x6B, 0x45, 0x2B),   # brown hair, distant enough from skin to read
-    "h": (0x4A, 0x2E, 0x1C),   # brown hair shadow
-    "T": (0x8A, 0x6B, 0x4A),   # tan cloth / helmet leather
+    "#": (0x2E, 0x17, 0x27),   # outline, deep plum (never pure black)
+    "H": (0xC9, 0x50, 0x82),   # hair, lit
+    "h": (0xA3, 0x38, 0x64),   # hair, mid
+    "j": (0x7D, 0x25, 0x4E),   # hair, shadow
+    "l": (0xDE, 0x6C, 0x98),   # hair highlight streak
+    "S": (0xF4, 0xCB, 0xA2),   # skin
+    "s": (0xD9, 0xA6, 0x7C),   # skin shadow
+    "E": (0x2E, 0x17, 0x27),   # eye and brow
+    "k": (0xEC, 0x86, 0x8E),   # blush
+    "G": (0x4E, 0x8C, 0x53),   # vest
+    "g": (0x33, 0x60, 0x38),   # vest shadow
+    "F": (0xEC, 0xAE, 0xDD),   # pink lining at the shoulders
+    "P": (0x6E, 0x35, 0x5D),   # trousers
+    "p": (0x4E, 0x23, 0x43),   # trousers shadow
+    "B": (0x5C, 0x2B, 0x4C),   # belt
+    "X": (0xE9, 0xB6, 0x4C),   # buckle, gold
+    "W": (0xEC, 0x9C, 0xB6),   # boots, pink
+    "w": (0xC6, 0x72, 0x90),   # boot shadow
+    "T": (0x9C, 0x4C, 0x6C),   # wrist cuff
 }
 
 
@@ -64,239 +83,160 @@ def fill(rows, x0, y0, x1, y1, ch) -> None:
             put(rows, x, y, ch)
 
 
-# The three candidates share a skeleton so they can be judged fairly: same
-# height, same eye line, same foot row. What changes is silhouette, palette and
-# head shape, which is what actually reads at 3x on the tablet.
-
-# --------------------------------------------------------------- candidate A
-def hero_red() -> dict[str, list[list[str]]]:
-    """A: the trainer from the prototype, cleaned up. Cap, jacket, jeans."""
-    frames = {}
-    for name in ("down", "up", "side"):
-        for step in (0, 1):
-            r = blank()
-            # cap: crown, then a brim that clears the eyes on the front view
-            fill(r, 5, 1, 10, 2, "R")
-            fill(r, 4, 3, 11, 3, "R")
-            put(r, 3, 4, "R")          # brim tip, front only
-            fill(r, 5, 4, 10, 7, "S")  # face
-            put(r, 5, 7, "s")
-            put(r, 10, 6, "s")
-            put(r, 10, 7, "s")
-            if name == "down":
-                put(r, 6, 5, "K")
-                put(r, 9, 5, "K")
-            elif name == "up":
-                fill(r, 5, 4, 10, 5, "Y")   # hair under the cap, no face
-            else:
-                put(r, 9, 5, "K")
-                put(r, 4, 4, "s")           # back of the cheek
-            # torso
-            fill(r, 5, 8, 10, 11, "B")
-            fill(r, 6, 8, 9, 8, "R")        # collar
-            fill(r, 4, 8, 4, 10, "R")       # near sleeve
-            fill(r, 11, 8, 11, 10, "b")     # far sleeve
-            put(r, 4, 11, "s")              # hand
-            put(r, 11, 11, "s")
-            # legs: two columns with a dark gap, so the stride is legible
-            fill(r, 5, 12, 6, 14, "B")
-            fill(r, 9, 12, 10, 14, "B")
-            fill(r, 5, 15, 6, 15, "K")
-            fill(r, 9, 15, 10, 15, "K")
-            fill(r, 6, 12, 6, 14, "K")           # gap between the legs
-            fill(r, 9, 12, 9, 14, "K")
-            if step:
-                fill(r, 5, 14, 7, 14, "K")       # left foot planted
-                fill(r, 9, 13, 10, 14, "K")      # right boot lifted
-            frames[f"{name}_{step}"] = outlined(r)
-    return frames
+def span(rows, y, a, b, ch) -> None:
+    fill(rows, a, y, b, y, ch)
 
 
-# --------------------------------------------------------------- candidate B
-def ranger_green() -> dict[str, list[list[str]]]:
-    """B: a farmhand. Straw hat, green overalls, spade over the shoulder."""
-    frames = {}
-    for name in ("down", "up", "side"):
-        for step in (0, 1):
-            r = blank()
-            # straw hat: brim two rows above the face, dark band under it
-            fill(r, 3, 2, 12, 2, "Y")
-            fill(r, 5, 1, 10, 1, "Y")
-            put(r, 3, 2, "g")
-            put(r, 12, 2, "g")
-            fill(r, 5, 3, 10, 3, "g")
-            fill(r, 5, 4, 10, 7, "S")
-            put(r, 5, 7, "s")
-            put(r, 10, 6, "s")
-            if name == "down":
-                put(r, 6, 5, "K")
-                put(r, 9, 5, "K")
-            elif name == "up":
-                fill(r, 5, 4, 10, 5, "Y")
-            else:
-                put(r, 9, 5, "K")
-                put(r, 4, 4, "s")
-            # overalls with red shirt sleeves
-            fill(r, 5, 8, 10, 11, "G")
-            fill(r, 5, 8, 10, 8, "R")
-            fill(r, 4, 8, 4, 10, "R")
-            fill(r, 11, 8, 11, 10, "g")
-            put(r, 7, 9, "g")
-            put(r, 8, 9, "g")
-            put(r, 4, 11, "s")
-            put(r, 11, 11, "s")
-            if name != "down":                 # spade on the back
-                fill(r, 12, 4, 12, 9, "s")
-                fill(r, 11, 3, 13, 3, "B")
-            fill(r, 5, 12, 6, 14, "G")
-            fill(r, 9, 12, 10, 14, "G")
-            fill(r, 5, 15, 6, 15, "K")
-            fill(r, 9, 15, 10, 15, "K")
-            fill(r, 6, 12, 6, 14, "K")
-            fill(r, 9, 12, 9, 14, "K")
-            if step:
-                fill(r, 5, 14, 7, 14, "K")
-                fill(r, 9, 13, 10, 14, "K")
-            frames[f"{name}_{step}"] = outlined(r)
-    return frames
-
-
-# --------------------------------------------------------------- candidate C
-def kid_cap() -> dict[str, list[list[str]]]:
-    """C: a kid. Bigger round head, short body: reads best at 1x."""
-    frames = {}
-    for name in ("down", "up", "side"):
-        for step in (0, 1):
-            r = blank()
-            # round hair: three rows, narrower at the top
-            fill(r, 5, 1, 10, 1, "K")
-            fill(r, 4, 2, 11, 3, "K")
-            fill(r, 5, 4, 10, 7, "S")
-            put(r, 4, 4, "K")
-            put(r, 11, 4, "K")
-            put(r, 5, 7, "s")
-            put(r, 10, 6, "s")
-            if name == "down":
-                fill(r, 6, 5, 7, 5, "K")
-                fill(r, 8, 5, 9, 5, "K")
-            elif name == "up":
-                fill(r, 4, 4, 11, 6, "K")
-            else:
-                put(r, 9, 5, "K")
-                put(r, 4, 6, "s")
-            # short body, red tee, blue shorts
-            fill(r, 5, 8, 10, 10, "R")
-            fill(r, 4, 8, 4, 9, "R")
-            fill(r, 11, 8, 11, 9, "r")
-            fill(r, 5, 11, 10, 12, "B")
-            fill(r, 4, 11, 4, 12, "B")
-            fill(r, 11, 11, 11, 12, "b")
-            # short legs, sandals
-            fill(r, 4, 13, 6, 14, "S")
-            fill(r, 9, 13, 11, 14, "S")
-            fill(r, 4, 15, 6, 15, "K")
-            fill(r, 9, 15, 11, 15, "K")
-            if step:
-                fill(r, 4, 14, 6, 14, "K")
-                fill(r, 10, 15, 11, 15, "S")
-            frames[f"{name}_{step}"] = outlined(r)
-    return frames
-
-
-# --------------------------------------------------------------- candidate D
-def traveller_pony() -> dict[str, list[list[str]]]:
-    """D: a traveller. Ponytail, cream blouse, red skirt, boots."""
-    frames = {}
-    for name in ("down", "up", "side"):
-        for step in (0, 1):
-            r = blank()
-            # hair: crown plus a ponytail that hangs on the side view
-            fill(r, 5, 1, 10, 2, "H")
-            fill(r, 4, 3, 11, 3, "H")
-            fill(r, 4, 4, 4, 7, "H")
-            fill(r, 11, 4, 11, 7, "h")
-            fill(r, 5, 4, 10, 7, "S")
-            put(r, 5, 7, "s")
-            put(r, 10, 6, "s")
-            if name == "down":
-                put(r, 6, 5, "K")
-                put(r, 9, 5, "K")
-                put(r, 8, 7, "s")          # mouth
-            elif name == "up":
-                fill(r, 4, 3, 11, 6, "H")  # all hair from behind
-            else:
-                put(r, 9, 5, "K")
-                fill(r, 12, 4, 12, 8, "H") # ponytail
-                put(r, 4, 4, "s")
-            # blouse + skirt
-            fill(r, 5, 8, 10, 9, "W")
-            fill(r, 4, 8, 4, 9, "W")
-            fill(r, 11, 8, 11, 9, "s")
-            fill(r, 4, 10, 11, 11, "R")
-            put(r, 4, 11, "r")
-            put(r, 11, 11, "r")
-            # legs and boots
-            fill(r, 5, 12, 6, 13, "S")
-            fill(r, 9, 12, 10, 13, "S")
-            fill(r, 5, 14, 6, 15, "K")
-            fill(r, 9, 14, 10, 15, "K")
-            if step:
-                fill(r, 5, 15, 6, 15, "S")
-                fill(r, 9, 14, 10, 14, "b")
-            frames[f"{name}_{step}"] = outlined(r)
-    return frames
-
-
-# --------------------------------------------------------------- candidate E
-def miner_dark() -> dict[str, list[list[str]]]:
-    """E: a miner. Helmet lamp, beard, brown work clothes."""
-    frames = {}
-    for name in ("down", "up", "side"):
-        for step in (0, 1):
-            r = blank()
-            # helmet with a lamp at the front
-            fill(r, 4, 1, 11, 2, "Y")
-            fill(r, 3, 3, 12, 3, "T")
-            if name != "up":
-                put(r, 7, 2, "W")
-                put(r, 8, 2, "W")
-            fill(r, 5, 4, 10, 7, "S")
-            put(r, 5, 7, "s")
-            put(r, 10, 6, "s")
-            if name == "down":
-                put(r, 6, 5, "K")
-                put(r, 9, 5, "K")
-                fill(r, 6, 6, 9, 7, "h")   # beard
-            elif name == "up":
-                fill(r, 4, 3, 11, 5, "K")  # hair under the helmet
-            else:
-                put(r, 9, 5, "K")
-                fill(r, 9, 6, 11, 7, "h")  # beard, side
-                put(r, 4, 4, "s")
-            # work clothes
-            fill(r, 5, 8, 10, 11, "G")
-            fill(r, 4, 8, 4, 10, "G")
-            fill(r, 11, 8, 11, 10, "g")
-            fill(r, 6, 9, 9, 9, "K")       # belt
-            put(r, 8, 9, "Y")
-            fill(r, 5, 12, 6, 14, "b")
-            fill(r, 9, 12, 10, 14, "b")
-            fill(r, 5, 15, 6, 15, "K")
-            fill(r, 9, 15, 10, 15, "K")
-            if step:
-                fill(r, 5, 14, 6, 14, "K")
-                fill(r, 9, 15, 10, 15, "b")
-            frames[f"{name}_{step}"] = outlined(r)
-    return frames
-
-
-CANDIDATES = {
-    "A": ("Trainer merah", hero_red),
-    "B": ("Petani jerami", ranger_green),
-    "C": ("Anak kecil", kid_cap),
-    "D": ("Pengelana", traveller_pony),
-    "E": ("Penambang", miner_dark),
+# The head is a rounded mass of hair with a window of face in it. Written as
+# spans rather than as a bitmap so the shape is legible: each row says how wide
+# the hair is there, which is the whole silhouette.
+HAIR = {
+    3: (13, 18), 4: (11, 21), 5: (10, 22), 6: (9, 23), 7: (9, 23), 8: (8, 24),
+    9: (8, 24), 10: (8, 24), 11: (8, 24), 12: (9, 23), 13: (9, 23), 14: (10, 22),
+    15: (11, 21), 16: (12, 20), 17: (14, 19),
 }
+FACE = {7: (13, 19), 8: (12, 20), 9: (12, 20), 10: (12, 20),
+        11: (12, 20), 12: (12, 20), 13: (12, 20)}
+
+
+def head(rows, view: str) -> None:
+    """Hair, then the face, then the two or three pixels that make it a face."""
+    for y, (a, b) in HAIR.items():
+        span(rows, y, a, b, "h")
+    # lit from the top-left: a wedge of the lighter tone
+    span(rows, 3, 14, 17, "H")
+    span(rows, 4, 12, 18, "H")
+    span(rows, 5, 10, 15, "H")
+    span(rows, 6, 9, 13, "H")
+    span(rows, 7, 9, 11, "H")
+    span(rows, 8, 8, 10, "H")
+    span(rows, 9, 8, 9, "H")
+    # highlight streaks, angled down to the right like the reference
+    span(rows, 5, 13, 16, "l")
+    span(rows, 4, 16, 19, "l")
+    span(rows, 6, 17, 19, "l")
+    span(rows, 7, 20, 22, "l")
+    # the shadow side, and the shadow under the fringe
+    fill(rows, 21, 9, 24, 13, "j")
+    fill(rows, 19, 13, 23, 16, "j")
+    fill(rows, 10, 14, 12, 16, "j")
+
+    if view == "down":
+        for y, (a, b) in FACE.items():
+            span(rows, y, a, b, "S")
+        # fringe: two points of hair dipping over the forehead
+        span(rows, 7, 13, 15, "h")
+        span(rows, 7, 18, 20, "h")
+        put(rows, 16, 7, "h")
+        put(rows, 17, 7, "S")
+        # brows and eyes: two pixels each, one row, relaxed
+        span(rows, 9, 13, 14, "E")
+        span(rows, 9, 18, 19, "E")
+        put(rows, 13, 8, "E")
+        put(rows, 18, 8, "E")
+        # blush, and the cheek in shadow on the far side
+        put(rows, 12, 12, "k")
+        put(rows, 20, 12, "k")
+        span(rows, 13, 18, 19, "s")
+        # the mouth is a short line, not a smile: this character is calm
+        span(rows, 13, 15, 17, "s")
+        put(rows, 14, 12, "s")
+        put(rows, 18, 12, "s")
+        span(rows, 17, 15, 17, "S")            # neck
+    elif view == "up":
+        # From behind: all hair. The mass follows the same spans as the front,
+        # so the two views share a silhouette and the head does not change size
+        # when the player turns around.
+        for y, (a, b) in FACE.items():
+            span(rows, y, a, b, "h")
+        fill(rows, 10, 10, 21, 17, "h")
+        span(rows, 9, 13, 18, "H")
+        span(rows, 10, 12, 16, "H")
+        span(rows, 11, 11, 14, "H")
+        fill(rows, 20, 11, 22, 16, "j")
+        fill(rows, 11, 13, 13, 17, "j")
+        span(rows, 11, 15, 19, "l")
+        span(rows, 12, 12, 15, "l")
+        # a parting line, so the back reads as hair with a direction rather
+        # than as a smooth dome: two dark strokes leaving the crown
+        for i, y in enumerate(range(10, 16)):
+            put(rows, 17 + (i // 3), y, "j")
+        span(rows, 14, 11, 20, "j")
+        # the ends of the hair flick out over the shoulders
+        put(rows, 9, 15, "j")
+        put(rows, 22, 15, "j")
+        # the nape sits on the collar
+        span(rows, 17, 14, 16, "j")
+        span(rows, 17, 18, 20, "j")
+    else:  # side, facing right
+        # The profile is a single column of face at the front of the head, with
+        # hair covering everything behind it. Fill the whole face block first
+        # and carve the hair out of it: leaving the two routines to overlap was
+        # what punched holes in the cheek.
+        fill(rows, 12, 7, 22, 16, "S")
+        fill(rows, 12, 7, 16, 16, "h")         # the back half is hair
+        fill(rows, 21, 8, 22, 15, "s")         # cheek in shadow
+        fill(rows, 9, 3, 19, 9, "H")           # lit crown, over the top
+        fill(rows, 9, 4, 12, 12, "j")          # deep shadow at the back
+        span(rows, 5, 12, 17, "l")
+        span(rows, 6, 17, 19, "l")
+        # the fringe hangs over the temple, in front of the hair mass
+        fill(rows, 16, 7, 18, 9, "h")
+        span(rows, 10, 16, 17, "l")
+        # one eye, forward of centre
+        span(rows, 11, 18, 19, "E")
+        put(rows, 20, 10, "E")
+        # a calm brow
+        span(rows, 9, 18, 19, "j")
+        put(rows, 22, 13, "s")                 # nose
+        span(rows, 14, 18, 20, "s")            # mouth
+        put(rows, 13, 17, "k")                 # blush
+        span(rows, 17, 15, 17, "S")            # neck
+
+
+def body(rows, view: str) -> None:
+    """Vest, belt, trousers, boots. Grown-up proportions: head to body is 1:1."""
+    if view == "side":
+        fill(rows, 11, 18, 20, 19, "G")
+        fill(rows, 11, 19, 20, 25, "G")
+        fill(rows, 11, 19, 12, 25, "F")        # lining down the back
+        fill(rows, 19, 20, 20, 24, "g")
+        span(rows, 17, 16, 18, "S")
+        span(rows, 25, 11, 20, "g")
+        fill(rows, 11, 26, 20, 27, "B")
+        fill(rows, 18, 26, 19, 27, "X")
+        fill(rows, 11, 28, 20, 30, "P")
+        fill(rows, 11, 28, 12, 30, "p")
+        span(rows, 31, 11, 16, "W")
+        span(rows, 31, 18, 20, "W")
+        put(rows, 11, 31, "w")
+        put(rows, 20, 31, "w")
+    else:
+        fill(rows, 11, 18, 20, 18, "G")
+        fill(rows, 10, 19, 21, 19, "G")
+        fill(rows, 10, 20, 21, 25, "G")
+        fill(rows, 10, 18, 11, 21, "F")        # lining at both shoulders
+        fill(rows, 20, 18, 21, 21, "F")
+        span(rows, 18, 15, 17, "S")
+        # arms: one column outside the vest, the far one in shadow
+        fill(rows, 10, 22, 10, 25, "S")
+        fill(rows, 21, 22, 21, 25, "s")
+        put(rows, 10, 26, "T")
+        put(rows, 21, 26, "T")
+        span(rows, 25, 11, 20, "g")
+        if view == "down":
+            fill(rows, 15, 21, 16, 24, "g")    # centre seam
+        fill(rows, 10, 26, 21, 27, "B")
+        fill(rows, 15, 26, 17, 27, "X")
+        fill(rows, 11, 28, 20, 30, "P")
+        fill(rows, 11, 28, 12, 30, "p")
+        fill(rows, 19, 28, 20, 30, "p")
+        if view == "down":
+            fill(rows, 15, 29, 16, 30, "p")    # the gap between the legs
+        span(rows, 31, 11, 15, "W")
+        span(rows, 31, 18, 20, "W")
+        put(rows, 11, 31, "w")
+        put(rows, 20, 31, "w")
 
 
 def outlined(rows: list[list[str]]) -> list[list[str]]:
@@ -304,8 +244,7 @@ def outlined(rows: list[list[str]]) -> list[list[str]]:
 
     Drawn by code rather than by hand: a hand drawn outline is the first thing
     to break when a limb moves, and it is invisible until the sprite is on a
-    dark tile. Kept inside the 16x16 cell, so the feet lose their outline on
-    the last row instead of spilling - the boots are already dark there.
+    dark tile.
     """
     out = [row[:] for row in rows]
     for y in range(H):
@@ -314,16 +253,50 @@ def outlined(rows: list[list[str]]) -> list[list[str]]:
                 continue
             # A pixel in a one wide vertical gap (between the legs) is inside
             # the silhouette. Outlining it turns a pair of legs into a comb.
-            open_left = x > 0 and rows[y][x - 1] == "."
-            open_right = x < W - 1 and rows[y][x + 1] == "."
-            if open_left and open_right:
+            if 0 < x < W - 1 and rows[y][x - 1] == "." and rows[y][x + 1] == ".":
                 continue
             for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                 nx, ny = x + dx, y + dy
-                if 0 <= nx < W and 0 <= ny < H and rows[ny][nx] not in (".", "K"):
-                    out[y][x] = "K"
+                if 0 <= nx < W and 0 <= ny < H and rows[ny][nx] not in (".", "#"):
+                    out[y][x] = "#"
                     break
     return out
+
+
+def walk_frame(view: str, step: int) -> list[list[str]]:
+    """One frame. Step 1 is a stride: the boots shift and one lifts."""
+    rows = blank()
+    head(rows, view)
+    body(rows, view)
+    if step:
+        if view == "side":
+            fill(rows, 11, 31, 16, 31, ".")
+            fill(rows, 18, 31, 20, 31, "W")
+            put(rows, 17, 31, ".")
+            put(rows, 16, 30, "W")
+            put(rows, 19, 30, "P")
+        else:
+            fill(rows, 11, 31, 15, 31, ".")
+            fill(rows, 18, 31, 20, 31, ".")
+            fill(rows, 10, 31, 14, 31, "W")
+            fill(rows, 18, 31, 21, 31, "W")
+            fill(rows, 15, 31, 16, 31, ".")
+            put(rows, 10, 30, "W")
+            put(rows, 21, 30, "W")
+    return outlined(rows)
+
+
+def frames() -> dict[str, list[list[str]]]:
+    return {
+        f"{view}_{step}": walk_frame(view, step)
+        for view in ("down", "up", "side")
+        for step in (0, 1)
+    }
+
+
+def mirror(rows: list[list[str]]) -> list[list[str]]:
+    """Flip a side-facing frame, so one drawn direction serves both ways."""
+    return [list(reversed(row)) for row in rows]
 
 
 def draw(rows: list[list[str]]) -> Image:
@@ -336,193 +309,30 @@ def draw(rows: list[list[str]]) -> Image:
     return img
 
 
-def sheet(frames: dict[str, list[list[str]]], scale: int = 4) -> Image:
-    """One row per direction, two columns of walk frames."""
-    order = [("down", 0), ("down", 1), ("up", 0), ("up", 1),
-             ("side", 0), ("side", 1)]
-    pad = 2
-    cols, rows = len(order), 1
-    cell = W * scale
-    img = Image(cols * (cell + pad) + pad, rows * (cell + pad) + pad,
-                fill=(0x5C, 0x7A, 0x45))    # grass, so the outline can be judged
-    for index, (direction, step) in enumerate(order):
-        art = draw(frames[f"{direction}_{step}"])
-        x0 = pad + index * (cell + pad)
-        y0 = pad
-        for y in range(H):
-            for x in range(W):
-                r, g, b, a = art.px(x, y)
-                if not a:
-                    continue
-                for dy in range(scale):
-                    for dx in range(scale):
-                        img.dot(x0 + x * scale + dx, y0 + y * scale + dy, (r, g, b))
-    return img
-
-
-LABELS = {
-    "A": "A  TRAINER MERAH",
-    "B": "B  PETANI JERAMI",
-    "C": "C  ANAK KECIL",
-    "D": "D  PENGELANA",
-    "E": "E  PENAMBANG",
-}
-VIEWS = (("down", 0), ("down", 1), ("up", 0), ("up", 1), ("side", 0), ("side", 1))
-VIEW_NAMES = ("DEPAN", "", "BELAKANG", "", "SAMPING", "")
-SIZES = (1, 2, 3, 4, 6)
-
-
-def options_sheet(scale: int = 6) -> Image:
-    """Every candidate stacked, one row per character, labelled."""
-    pad = 20
-    cell = W * scale
-    gutter = 10
-    label_w = 360          # "A  PETANI JERAMI" is 16 glyphs at 6*2 px pitch
-    row_w = len(VIEWS) * (cell + gutter) - gutter
-    width = pad * 2 + label_w + row_w
-    row_h = cell + 56
-    strip_h = W * max(SIZES) + 46            # real-size strip, 1x .. 6x
-    height = pad * 2 + 26 + len(CANDIDATES) * row_h + strip_h + 40
-    img = Image(width, height, fill=(0xFB, 0xF3, 0xDC))   # paper, like the HUD
-
-    ink = (0x3B, 0x2F, 0x1E)
-    faint = (0x9A, 0x87, 0x68)
-
-    # column titles, once, above the first row
-    x = pad + label_w
-    for index, name in enumerate(VIEW_NAMES):
-        if name:
-            text(img, x + index * (cell + gutter) + 4, pad - 2, name, 2, faint)
-
-    for row, (key, (_, maker)) in enumerate(CANDIDATES.items()):
-        y0 = pad + 26 + row * row_h
-        text(img, pad, y0 + cell // 2 - 14, LABELS[key], 2, ink)
-        frames = maker()
-        x = pad + label_w
-        for direction, step in VIEWS:
-            art = draw(frames[f"{direction}_{step}"])
-            # grass patch behind each frame so the silhouette is judged honestly
-            for yy in range(cell):
-                for xx in range(cell):
-                    img.dot(x + xx, y0 + yy, (0x5C, 0x7A, 0x45))
-            for yy in range(H):
-                for xx in range(W):
-                    r, g, b, a = art.px(xx, yy)
-                    if not a:
-                        continue
-                    for dy in range(scale):
-                        for dx in range(scale):
-                            img.dot(x + xx * scale + dx, y0 + yy * scale + dy, (r, g, b))
-            x += cell + gutter
-
-    # ---- real-size strip: the same front frame at every scale the game uses,
-    # so the sheet answers "does it read on the tablet" and not only at 6x.
-    strip_y = pad + 26 + len(CANDIDATES) * row_h + 8
-    text(img, pad, strip_y, "UKURAN TAMPIL", 2, ink)
-    text(img, pad + 190, strip_y + 2, "(TINGGI 16 PX, SEL 16 PX)", 1, faint)
-    cursor = pad
-    for size in SIZES:
-        art = draw(CANDIDATES["A"][1]()["down_0"])
-        for yy in range(W):
-            for xx in range(W):
-                r, g, b, a = art.px(xx, yy)
-                if not a:
-                    continue
-                for dy in range(size):
-                    for dx in range(size):
-                        img.dot(cursor + xx * size + dx, strip_y + 24 + yy * size + dy, (r, g, b))
-        text(img, cursor, strip_y + 30 + W * size, f"{size}X", 1, faint)
-        cursor += W * size + 20
-
-    text(img, pad, height - 26, "16 X 16  -  4 ARAH  -  2 FRAME JALAN  -  DEPAN / BELAKANG / SAMPING", 2, faint)
-    return img
-
-
-FONT = {
-    "A": ["01110", "10001", "10001", "11111", "10001", "10001", "10001"],
-    "B": ["11110", "10001", "11110", "10001", "10001", "10001", "11110"],
-    "C": ["01110", "10001", "10000", "10000", "10000", "10001", "01110"],
-    "D": ["11110", "10001", "10001", "10001", "10001", "10001", "11110"],
-    "E": ["11111", "10000", "11110", "10000", "10000", "10000", "11111"],
-    "G": ["01110", "10001", "10000", "10111", "10001", "10001", "01111"],
-    "H": ["10001", "10001", "11111", "10001", "10001", "10001", "10001"],
-    "F": ["11111", "10000", "11110", "10000", "10000", "10000", "10000"],
-    "I": ["11111", "00100", "00100", "00100", "00100", "00100", "11111"],
-    "J": ["00111", "00010", "00010", "00010", "10010", "10010", "01100"],
-    "K": ["10001", "10010", "10100", "11000", "10100", "10010", "10001"],
-    "L": ["10000", "10000", "10000", "10000", "10000", "10000", "11111"],
-    "M": ["10001", "11011", "10101", "10101", "10001", "10001", "10001"],
-    "N": ["10001", "11001", "10101", "10011", "10001", "10001", "10001"],
-    "O": ["01110", "10001", "10001", "10001", "10001", "10001", "01110"],
-    "P": ["11110", "10001", "10001", "11110", "10000", "10000", "10000"],
-    "R": ["11110", "10001", "10001", "11110", "10100", "10010", "10001"],
-    "S": ["01111", "10000", "01110", "00001", "00001", "10001", "01110"],
-    "T": ["11111", "00100", "00100", "00100", "00100", "00100", "00100"],
-    "U": ["10001", "10001", "10001", "10001", "10001", "10001", "01110"],
-    "Y": ["10001", "10001", "01010", "00100", "00100", "00100", "00100"],
-    " ": ["00000"] * 7,
-    # digits and punctuation: without them a label like "16 X 16" renders as
-    # gaps, which is how a footer looked like two overlapping strings
-    "0": ["01110", "10001", "10011", "10101", "11001", "10001", "01110"],
-    "1": ["00100", "01100", "00100", "00100", "00100", "00100", "01110"],
-    "2": ["01110", "10001", "00001", "00110", "01000", "10000", "11111"],
-    "3": ["11110", "00001", "00110", "00001", "00001", "10001", "01110"],
-    "4": ["00010", "00110", "01010", "10010", "11111", "00010", "00010"],
-    "5": ["11111", "10000", "11110", "00001", "00001", "10001", "01110"],
-    "6": ["00110", "01000", "10000", "11110", "10001", "10001", "01110"],
-    "7": ["11111", "00001", "00010", "00100", "01000", "01000", "01000"],
-    "8": ["01110", "10001", "10001", "01110", "10001", "10001", "01110"],
-    "9": ["01110", "10001", "10001", "01111", "00001", "00010", "01100"],
-    "X": ["10001", "10001", "01010", "00100", "01010", "10001", "10001"],
-    "-": ["00000", "00000", "00000", "11111", "00000", "00000", "00000"],
-    "/": ["00001", "00010", "00010", "00100", "01000", "01000", "10000"],
-    ".": ["00000", "00000", "00000", "00000", "00000", "01100", "01100"],
-}
-
-
-def text(img: Image, x: int, y: int, label: str, scale: int, colour) -> None:
-    """5x7 block font, one pixel of tracking. No external font file."""
-    cx = x
-    for ch in label.upper():
-        for gy, bits in enumerate(FONT.get(ch, FONT[" "])):
-            for gx, bit in enumerate(bits):
-                if bit == "1":
-                    for dy in range(scale):
-                        for dx in range(scale):
-                            img.dot(cx + gx * scale + dx, y + gy * scale + dy, colour)
-        cx += 6 * scale
-
-
-def mirror(rows: list[list[str]]) -> list[list[str]]:
-    """Flip a side-facing frame, so one drawn direction serves both ways."""
-    return [list(reversed(row)) for row in rows]
-
-
-# Atlas row order. The Kotlin sheet indexes it by Direction.ordinal, so the
-# two must stay in the same order as the enum: UP, DOWN, LEFT, RIGHT.
+# Atlas row order. The Kotlin sheet indexes it by Direction.ordinal, so the two
+# must stay in the same order as the enum: UP, DOWN, LEFT, RIGHT.
 ATLAS_ROWS = ("up", "down", "left", "right")
 
 
-def atlas_frames(frames: dict[str, list[list[str]]]) -> dict[str, list[list[str]]]:
+def atlas_frames(all_frames: dict[str, list[list[str]]]) -> dict[str, list[list[str]]]:
     return {
-        "up": [frames["up_0"], frames["up_1"]],
-        "down": [frames["down_0"], frames["down_1"]],
-        "left": [mirror(frames["side_0"]), mirror(frames["side_1"])],
-        "right": [frames["side_0"], frames["side_1"]],
+        "up": [all_frames["up_0"], all_frames["up_1"]],
+        "down": [all_frames["down_0"], all_frames["down_1"]],
+        "left": [mirror(all_frames["side_0"]), mirror(all_frames["side_1"])],
+        "right": [all_frames["side_0"], all_frames["side_1"]],
     }
 
 
-def atlas(chosen: str = "C") -> Image:
-    """The sheet the game loads: four rows by two frames, 16x16 each.
+def atlas() -> Image:
+    """The sheet the game loads: four rows by two frames, 32x32 each.
 
-    Left is the mirror of right rather than hand-drawn: at 16px the two are
-    indistinguishable, and one drawn direction cannot drift out of sync with
-    the other.
+    Left is the mirror of right rather than hand-drawn: one drawn direction
+    cannot drift out of sync with the other, and the mirror is free.
     """
-    frames = atlas_frames(CANDIDATES[chosen][1]())
+    packed = atlas_frames(frames())
     img = Image(2 * W, len(ATLAS_ROWS) * H)
     for row, key in enumerate(ATLAS_ROWS):
-        for col, rows in enumerate(frames[key]):
+        for col, rows in enumerate(packed[key]):
             art = draw(rows)
             for y in range(H):
                 for x in range(W):
@@ -532,33 +342,50 @@ def atlas(chosen: str = "C") -> Image:
     return img
 
 
+def review_sheet(scale: int = 8) -> Image:
+    """Both walk frames of all four directions, on grass, for review.
+
+    The rows are in atlas order, so this doubles as a picture of the sheet: what
+    you see at row 0 is what the game draws when the player faces up.
+    """
+    packed = atlas_frames(frames())
+    pad = 8
+    cell = W * scale
+    img = Image(2 * (cell + pad) + pad, len(ATLAS_ROWS) * (cell + pad) + pad,
+                fill=(0x5C, 0x7A, 0x45))       # grass, so the outline can be judged
+    for row, key in enumerate(ATLAS_ROWS):
+        for col, rows in enumerate(packed[key]):
+            art = draw(rows)
+            x0 = pad + col * (cell + pad)
+            y0 = pad + row * (cell + pad)
+            for y in range(H):
+                for x in range(W):
+                    r, g, b, a = art.px(x, y)
+                    if not a:
+                        continue
+                    for dy in range(scale):
+                        for dx in range(scale):
+                            img.dot(x0 + x * scale + dx, y0 + y * scale + dy, (r, g, b))
+    return img
+
+
 def main(argv: list[str]) -> None:
-    out_dir = os.path.join(ROOT, "docs", "sprites")
-    os.makedirs(out_dir, exist_ok=True)
-    if "--chars" in argv:
-        for key, (label, maker) in CANDIDATES.items():
-            img = sheet(maker())
-            path = os.path.join(out_dir, f"candidate-{key.lower()}.png")
-            img.to_png(path)
-            print(f"{path}  {img.w}x{img.h}  {label}")
-        return
     if "--atlas" in argv:
         # written to the app assets, not docs: this file is what the APK loads
-        chosen = "C"
-        for i, arg in enumerate(argv):
-            if arg == "--atlas" and i + 1 < len(argv):
-                chosen = argv[i + 1].upper()
-        img = atlas(chosen)
+        img = atlas()
         path = os.path.join(ROOT, "app", "src", "main", "assets", "sprites",
                             "player.png")
         os.makedirs(os.path.dirname(path), exist_ok=True)
         img.to_png(path)
-        print(f"{path}  {img.w}x{img.h}  {CANDIDATES[chosen][0]}")
+        print(f"{path}  {img.w}x{img.h}  4 arah x 2 frame, {W}x{H} px per frame")
         return
-    img = options_sheet()
-    path = os.path.join(out_dir, "options.png")
+
+    out_dir = os.path.join(ROOT, "docs", "sprites")
+    os.makedirs(out_dir, exist_ok=True)
+    img = review_sheet()
+    path = os.path.join(out_dir, "player.png")
     img.to_png(path)
-    print(f"{path}  {img.w}x{img.h}  {len(CANDIDATES)} calon sprite, 3 tampilan x 2 frame")
+    print(f"{path}  {img.w}x{img.h}  4 arah x 2 frame, {W}x{H} px per frame")
 
 
 if __name__ == "__main__":
