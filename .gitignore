@@ -1,0 +1,30 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+/app/build
+*.apk
+*.aab
+*.keystore
+!debug.keystore
+
+# python bytecode from the preview tooling
+__pycache__/
+*.pyc
+
+# reference photos pulled in for measurement (not part of the app)
+/image-search
+
+# leftovers from when the editor kept its own working copy of the map. The
+# editor now writes the map the app loads, so these must never reappear: a stale
+# file here is exactly what made the editor and gameplay show different maps.
+/docs/tileset/map.json
+/docs/tileset/map.json.bak
+
+# written next to the map the app loads, kept as a one-deep safety net on save
+/app/src/main/assets/tileset/map.json.bak

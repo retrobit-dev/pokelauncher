@@ -1,0 +1,367 @@
+/* Johto map editor.
+ *
+ * The map is a grid of 16x16 cells. The canvas fills everything above the tool
+ * bar; the view moves with the Geser tool (or a middle/right drag, or the arrow
+ * keys) and scales with the -/+/zoom buttons or the wheel. There is no pinch
+ * and no two-finger pan: see app.js for why moving the map became a tool.
+ *
+ * Tools: pencil, eraser, picker, area fill, move, with undo/redo and a brush
+ * size. The Tile button opens the tileset.
+ *
+ * One thing here is not a drawing aid: the gameplay frame. It marks the cells
+ * that `Mode gameplay` will show, using the same zoom and dead-zone rule as
+ * CameraRig.kt, so what you see framed is what the tablet will show.
+ */
+:root {
+  --paper: #fbf3dc;
+  --paper-deep: #f3e4bf;
+  --ink: #3b2f1e;
+  --ink-soft: #6b5b44;
+  --gold: #e0b84c;
+  --red: #c53a2d;
+  --green: #6ba05a;
+  --shadow: 0 8px 22px rgba(59, 47, 30, .22);
+  --radius: 14px;
+  /* Two columns, two rows each, so the bar is two buttons tall:
+     2 * 38 + 1 * 6 (gap) + 2 * 7 (padding) + 2 (border) = 98px. */
+  --btn: 38px;
+  --row-gap: 6px;
+  --tool-rows: 2;
+  --bar-pad: 7px;
+  --bar-h: calc(var(--tool-rows) * var(--btn) + (var(--tool-rows) - 1) * var(--row-gap)
+                + 2 * var(--bar-pad) + 2px);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #6b9a4f;
+  color: var(--ink);
+  font: 13px/1.35 "DotGothic16", ui-monospace, "SF Mono", Menlo, monospace;
+  -webkit-font-smoothing: none;
+}
+
+/* ------------------------------------------------------------ the map
+   The canvas is the window minus the tool bar: the bar is a sibling, not an
+   overlay, so nothing is ever painted underneath a floating button. */
+#map {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: var(--bar-h);
+  width: 100%;
+  height: calc(100% - var(--bar-h));
+  display: block;
+  /* The map is dragged with the Geser tool, not with the browser's own scroll
+     or pinch: touch-action none stops the page from zooming under a stroke. */
+  touch-action: none;
+  cursor: crosshair;
+  image-rendering: pixelated;
+}
+
+/* ------------------------------------------------------------ tools
+   A stack of rows pinned to the bottom edge, one row per kind of job. Rows keep
+   related buttons together; a single wrapping row made every control look
+   equally related to every other, which is how the bar became unreadable. */
+#tools {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--bar-h);
+  display: flex;
+  align-items: flex-end;
+  gap: 24px;
+  padding: var(--bar-pad);
+  background: var(--paper);
+  border-top: 2px solid var(--ink);
+  box-shadow: 0 -4px 16px rgba(59, 47, 30, .16);
+  z-index: 5;
+}
+
+/* Two columns: the tools that change the map on the left, the view and the file
+   on the right. Each column stacks its own rows. */
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--row-gap);
+}
+.col-view { margin-left: auto; }   /* the right-hand column hugs the far edge */
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--btn);
+}
+
+/* the little caption that names a row, e.g. "Kuas" */
+.rowlabel {
+  flex: 0 0 auto;
+  padding: 0 6px 0 2px;
+  font-size: 9px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+/*
+ * Every button is the same square. The icon sits on top, its label underneath,
+ * so a long word like "Perbesar" cannot make its button wider than the rest.
+ */
+.tool {
+  flex: 0 0 auto;
+  width: var(--btn);
+  height: var(--btn);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 0;
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  box-shadow: 0 2px 6px rgba(59, 47, 30, .16);
+  transition: transform .08s ease, background .12s ease;
+}
+.tool:hover { background: var(--paper-deep); }
+.tool:active { transform: translateY(1px); }
+.tool:disabled {
+  opacity: .38;
+  cursor: default;
+  box-shadow: none;
+}
+.tool:disabled:hover { background: var(--paper); }
+.tool.active {
+  background: var(--gold);
+  box-shadow: 0 0 0 2px rgba(224, 184, 76, .45), 0 2px 6px rgba(59, 47, 30, .18);
+}
+.tool .ico {
+  font-size: 14px;
+  line-height: 1;
+  /* every glyph is centred in the same box, so mixed fonts still line up */
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+}
+.tool .lbl {
+  font-size: 7px;
+  line-height: 1;
+  letter-spacing: .01em;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tool.zoom .ico { font-size: 10px; font-weight: 700; }
+
+/* the two brush-size buttons: square, no label, so the number between them is
+   the only thing that changes width */
+.tool.mini {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+}
+.tool.mini .ico { font-size: 13px; width: 14px; height: 14px; }
+
+/* the brush size readout, between - and + */
+.readout {
+  flex: 0 0 auto;
+  min-width: 28px;
+  padding: 2px 5px;
+  border: 2px solid var(--ink-soft);
+  border-radius: 8px;
+  background: #fff;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.tool.save { background: var(--gold); }
+.tool.save:hover { background: #eecb68; }
+.tool.new { background: var(--paper-deep); }
+.tool.tiles { background: var(--red); color: var(--paper); border-color: #7d2418; }
+.tool.tiles:hover { background: #b03225; }
+.tool.tiles[aria-expanded="true"] { background: var(--gold); color: var(--ink); border-color: var(--ink); }
+
+.divider {
+  flex: 0 0 auto;
+  width: 2px;
+  height: calc(var(--btn) - 12px);
+  background: rgba(59, 47, 30, .25);
+  margin: 0 2px;
+}
+
+/* ------------------------------------------------------------ hud
+   Status sits between the two columns, on one line, so it never covers the
+   drawing area and never competes with the buttons. */
+#hud {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 1px;
+  padding: 0 2px;
+  font-size: 9px;
+  color: var(--ink-soft);
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#hud .sep { opacity: .45; margin: 0 4px; }
+#hud-tool { color: var(--ink); font-weight: 700; }
+
+/* ------------------------------------------------------------ drawer */
+#drawer {
+  position: fixed;
+  right: 12px;
+  top: 12px;
+  bottom: calc(var(--bar-h) + 12px);
+  width: min(320px, calc(100vw - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 2px solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--paper);
+  box-shadow: var(--shadow);
+  animation: slide .16s ease-out;
+  z-index: 6;
+}
+#drawer[hidden] { display: none; }
+
+@keyframes slide {
+  from { transform: translateX(14px); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+
+#drawer header { display: flex; align-items: center; gap: 8px; }
+#drawer h1 { margin: 0; font-size: 13px; letter-spacing: .12em; }
+#close {
+  margin-left: auto;
+  width: 30px;
+  height: 30px;
+  border: 2px solid var(--ink);
+  border-radius: 9px;
+  background: var(--paper-deep);
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 0 2px;
+  cursor: pointer;
+}
+#close:hover { background: #e9d7ae; }
+
+#tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.tab {
+  border: 2px solid var(--ink-soft);
+  background: transparent;
+  color: var(--ink-soft);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: .06em;
+  cursor: pointer;
+}
+.tab[aria-selected="true"] {
+  border-color: var(--ink);
+  background: var(--paper-deep);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* palette: one button per tile, sprite shown at 3x so 16px stays readable */
+#palette {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 8px;
+  padding-right: 2px;
+}
+.cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 4px 5px;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: #ffffff;
+  cursor: pointer;
+  color: var(--ink-soft);
+}
+.cell:hover { border-color: var(--ink-soft); }
+.cell[aria-pressed="true"] { border-color: var(--ink); background: var(--gold); color: var(--ink); }
+.cell canvas {
+  width: 48px;
+  height: 48px;
+  image-rendering: pixelated;
+  display: block;
+}
+.cell span {
+  font-size: 9px;
+  line-height: 1.1;
+  text-align: center;
+  word-break: break-word;
+  max-width: 100%;
+}
+.cell .tag { font-size: 8px; opacity: .7; letter-spacing: .04em; }
+
+/* the palette is empty until tiles exist: say what to do, not just nothing */
+#palette .empty {
+  grid-column: 1 / -1;
+  padding: 18px 12px;
+  border: 2px dashed var(--ink-soft);
+  border-radius: 12px;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+#drawer-info { font-size: 11px; color: var(--ink-soft); min-height: 1.2em; }
+
+/* ------------------------------------------------------------ toast
+   Sits above the bar, never on it. */
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--bar-h) + 14px);
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(59, 47, 30, .92);
+  color: var(--paper);
+  font-size: 12px;
+  pointer-events: none;
+  animation: pop .18s ease-out;
+  z-index: 7;
+}
+#toast[hidden] { display: none; }
+@keyframes pop {
+  from { opacity: 0; transform: translate(-50%, 6px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* narrow screens: the drawer covers the map instead of squeezing beside it */
+@media (max-width: 760px) {
+  /* The two columns need about 700px. On a phone the bar would push the map
+     off the screen, so the HUD goes and the columns close up. */
+  :root { --btn: 34px; }
+  #tools { gap: 10px; }
+  #drawer { left: 12px; width: auto; }
+  #hud { display: none; }
+}

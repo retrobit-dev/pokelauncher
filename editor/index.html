@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Johto Map Editor</title>
+<link rel="stylesheet" href="/editor/app.css">
+</head>
+<body>
+
+<!-- the map: a full grid of 16x16 cells, drawn on canvas above the tool bar -->
+<canvas id="map" aria-label="Peta Johto"></canvas>
+
+<!--
+  The bar is a stack of rows, one row per kind of job: what changes the map,
+  where the map is drawn, how big the brush is, and the file. Grouping by job
+  is what keeps a long list of buttons readable; a single wrapping row made
+  every control look equally related to every other.
+-->
+<div id="tools" role="toolbar" aria-label="Alat editor">
+
+  <!--
+    Two columns. Left: the tools that change the map. Right: the view and the
+    file. Buttons that act on the drawing sit under the hand that draws; the
+    ones that act on the whole map sit on the far side, so a mis-tap is not a
+    lost map. Each column is a stack of rows, one row per job.
+  -->
+  <div class="col col-tools">
+    <!-- what a stroke does -->
+    <div class="row" role="group" aria-label="Menggambar">
+      <button id="tool-pencil" class="tool active" title="Gambar (B)" data-key="b" aria-pressed="true">
+        <span class="ico" aria-hidden="true">✎</span><span class="lbl">Gambar</span>
+      </button>
+      <button id="tool-erase" class="tool" title="Hapus (E)" data-key="e" aria-pressed="false">
+        <span class="ico" aria-hidden="true">⌫</span><span class="lbl">Hapus</span>
+      </button>
+      <button id="tool-pick" class="tool" title="Ambil tile (I)" data-key="i" aria-pressed="false">
+        <span class="ico" aria-hidden="true">◉</span><span class="lbl">Ambil</span>
+      </button>
+      <button id="tool-fill" class="tool" title="Isi area (G)" data-key="g" aria-pressed="false">
+        <span class="ico" aria-hidden="true">▨</span><span class="lbl">Isi</span>
+      </button>
+      <span class="divider" aria-hidden="true"></span>
+      <button id="undo" class="tool" title="Batal (Ctrl+Z)" aria-label="Batal">
+        <span class="ico" aria-hidden="true">↶</span><span class="lbl">Batal</span>
+      </button>
+      <button id="redo" class="tool" title="Ulangi (Ctrl+Y)" aria-label="Ulangi">
+        <span class="ico" aria-hidden="true">↷</span><span class="lbl">Ulangi</span>
+      </button>
+    </div>
+
+    <!-- how many cells a stroke touches -->
+    <div class="row" role="group" aria-label="Ukuran kuas">
+      <span class="rowlabel" aria-hidden="true">Kuas</span>
+      <button id="size-down" class="tool mini" title="Kecilkan kuas ([)" aria-label="Kecilkan kuas">
+        <span class="ico" aria-hidden="true">−</span>
+      </button>
+      <span id="size-value" class="readout" aria-live="polite">1</span>
+      <button id="size-up" class="tool mini" title="Besarkan kuas (])" aria-label="Besarkan kuas">
+        <span class="ico" aria-hidden="true">+</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="col col-view">
+    <!-- where the window is, and how big -->
+    <div class="row" role="group" aria-label="Tampilan">
+      <button id="tool-move" class="tool" title="Geser peta (V): seret dengan satu jari" data-key="v" aria-pressed="false">
+        <span class="ico" aria-hidden="true">✥</span><span class="lbl">Geser</span>
+      </button>
+      <button id="view-out" class="tool" title="Perkecil (−)" data-key="-">
+        <span class="ico" aria-hidden="true">−</span><span class="lbl">Perkecil</span>
+      </button>
+      <button id="view-zoom" class="tool zoom" title="Zoom sekarang, klik untuk 1x">
+        <span class="ico" id="zoom-value" aria-hidden="true">1×</span><span class="lbl">Zoom</span>
+      </button>
+      <button id="view-in" class="tool" title="Perbesar (+)" data-key="+">
+        <span class="ico" aria-hidden="true">+</span><span class="lbl">Perbesar</span>
+      </button>
+      <button id="view-fit" class="tool" title="Muat seluruh peta (F)" data-key="f">
+        <span class="ico" aria-hidden="true">⤢</span><span class="lbl">Muat</span>
+      </button>
+    </div>
+
+    <!-- the file and the tileset -->
+    <div class="row" role="group" aria-label="Berkas">
+      <button id="save" class="tool save" title="Simpan peta (S)">
+        <span class="ico" aria-hidden="true">💾</span><span class="lbl">Simpan</span>
+      </button>
+      <button id="new" class="tool new" title="Peta baru (N)">
+        <span class="ico" aria-hidden="true">✚</span><span class="lbl">Baru</span>
+      </button>
+      <button id="add" class="tool tiles" title="Tambah objek / tile" aria-label="Tambah objek">
+        <span class="ico" aria-hidden="true">＋</span><span class="lbl">Tile</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- status: tool, brush size, cursor cell, map size, gameplay frame -->
+  <div id="hud" aria-live="off">
+    <span id="hud-tool">Pensil</span>
+    <span class="sep">·</span>
+    <span id="hud-brush">kuas 1×1</span>
+    <span class="sep">·</span>
+    <span id="hud-cell">0, 0</span>
+    <span class="sep">·</span>
+    <span id="hud-size">–</span>
+    <span class="sep">·</span>
+    <span id="hud-frame">–</span>
+  </div>
+</div>
+
+<!-- tileset drawer, opened by the Tile button -->
+<aside id="drawer" hidden aria-label="Tileset">
+  <header>
+    <h1>TILESET</h1>
+    <button id="close" title="Tutup (Esc)" aria-label="Tutup">×</button>
+  </header>
+  <div id="tabs" role="tablist"></div>
+  <div id="palette"></div>
+  <footer id="drawer-info">Pilih tile, lalu klik peta.</footer>
+</aside>
+
+<div id="toast" hidden></div>
+
+<script src="/editor/app.js"></script>
+</body>
+</html>

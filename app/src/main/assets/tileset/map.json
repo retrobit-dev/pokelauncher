@@ -1,0 +1,11 @@
+{
+  "cells": {},
+  "cols": 80,
+  "rows": 50,
+  "spawn": {
+    "x": 39,
+    "y": 33
+  },
+  "tile": 16,
+  "version": 1
+}
