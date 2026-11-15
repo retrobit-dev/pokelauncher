@@ -175,10 +175,16 @@ empat piksel di panel 2560×1600: cukup untuk dua titik, tidak cukup untuk wajah
 Karena frame-nya dua sel, sprite **ditambatkan di kaki**: baris bawah frame jatuh di dasar sel
 pemain, jadi kepala naik satu sel ke atas dan karakter berdiri di tanah, bukan melayang.
 
+Proporsinya chibi seperti Harvest Moon: kepala sepertiga tinggi badan. Tiap arah digambar dari
+blok eksplisit, bukan satu sprite dasar yang ditempel — profil butuh cakram wajah di depan dengan
+rambut di belakangnya, sedangkan tampak belakang butuh massa rambut yang utuh. Satu aturan yang
+mahal kalau salah: **brim topi di baris 8, wajah mulai baris 9**. Brim yang digambar di baris atas
+wajah menutupi mata, dan karakternya tampak buta.
+
 | Hal | Nilai |
 | --- | --- |
 | Ukuran | 64 × 128 px (2 frame × 4 baris), tiap frame 32 × 32 px = 2 × 2 sel |
-| Desain | Rambut magenta, rompi hijau, celana plum, sepatu pink — dari referensi yang digambar pengguna |
+| Desain | Petani Harvest Moon: topi biru berpanel putih, rambut cokelat, baju oranye, overall denim, sepatu bot cokelat |
 | Animasi | Frame 1 hanya dipakai saat berjalan; bergantian tiap langkah, bukan oleh timer |
 | Arah kiri | Cermin dari baris kanan, dibuat saat generate — bukan digambar dua kali |
 | Berhenti | Selalu kembali ke frame 0, termasuk saat jalan dibatalkan ketukan baru |

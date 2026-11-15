@@ -567,10 +567,15 @@ def check_preview_screen(path: str) -> None:
 
     # 3c. the player sprite is drawn. A 32px sprite scaled into the panel is
     # about a hundred pixels across, so sampling on a coarse grid would miss it:
-    # scan for a solid run of the character's own colours. Hair and vest are the
-    # two largest areas of the design, and neither is used by any tile, so a run
-    # of either is the character and not scenery.
-    colours = ((0xA3, 0x38, 0x64), (0x4E, 0x8C, 0x53))   # hair, vest
+    # scan for a solid run of the character's own colours.
+    #
+    # The colours are read from the generator's palette instead of being typed
+    # here. A hard-coded pair went stale twice - once when the character was
+    # redrawn - and a guard that fails because the art changed is a guard that
+    # teaches people to edit the guard.
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import sprites as sprite_gen                          # noqa: E402
+    colours = tuple(sprite_gen.PAL[c] for c in ("H", "O", "B"))   # hair, shirt, denim
     for colour in colours:
         found = False
         for y in range(panel_y + 4, panel_y + PANEL[1] - 4, 3):
