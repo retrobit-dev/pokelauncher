@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.retrobit.pokelauncher.game.Direction
 import dev.retrobit.pokelauncher.game.GameClock
 import dev.retrobit.pokelauncher.ui.components.MovePad
 import dev.retrobit.pokelauncher.ui.theme.HgColors
@@ -66,7 +67,7 @@ fun GameHud(
     onEat: () -> Unit,
     onTill: () -> Unit,
     onPlaceLight: () -> Unit,
-    onMove: (dev.retrobit.pokelauncher.game.Direction?) -> Unit,
+    onMove: (Direction?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // A tapped tree must answer immediately, or the world feels dead. The

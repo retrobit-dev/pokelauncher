@@ -39,7 +39,13 @@ object Joystick {
         if (radius <= 0f) return null
         val distance = kotlin.math.sqrt(dx * dx + dy * dy)
         if (distance / radius < DEAD_ZONE) return null
-        return if (kotlin.math.abs(dx) > kotlin.math.abs(dy)) {
+        val ax = kotlin.math.abs(dx)
+        val ay = kotlin.math.abs(dy)
+        // Horizontal wins its own tie: an exact diagonal is not a rare edge case
+        // on a pad made of pixels, and `>` alone sent (30, 30) down instead of
+        // right, because the vertical branch was also the else branch. That is
+        // the kind of bug that feels like the player stuttering.
+        return if (ax >= ay) {
             if (dx > 0f) Direction.RIGHT else Direction.LEFT
         } else {
             if (dy > 0f) Direction.DOWN else Direction.UP
@@ -55,6 +61,9 @@ object Joystick {
     fun knob(dx: Float, dy: Float, radius: Float = RADIUS_DP): Pair<Float, Float> {
         if (radius <= 0f) return 0f to 0f
         val distance = kotlin.math.sqrt(dx * dx + dy * dy)
+        // A thumb exactly at the centre has no direction to be scaled in; the
+        // scale factor would be radius/0. This is not theoretical: it is the
+        // resting state, and the test that caught it starts there.
         if (distance <= radius || distance == 0f) return dx to dy
         val k = radius / distance
         return dx * k to dy * k

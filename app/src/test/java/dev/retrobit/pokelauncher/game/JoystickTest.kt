@@ -1,8 +1,8 @@
 package dev.retrobit.pokelauncher.game
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -76,12 +76,16 @@ class JoystickTest {
     }
 
     @Test
-    fun `the pad is big enough for a thumb but does not eat the map`() {
-        // 76 dp at 160 dpi is about 12 mm: a thumb pad. The whole disc must stay
-        // well under a fifth of the panel's short side, or it covers the map.
-        assertNotNull(Joystick.direction(0f, 0f, Joystick.RADIUS_DP))
+    fun `the pad is sized like a thumb pad, not a button`() {
+        // 76 dp at 160 dpi is about 12 mm across the radius: a thumb pad, not a
+        // dot. The numbers are checked here because the mock draws the tablet
+        // shot from them (tools/mock_ingame.py) and a silent change would make
+        // the picture and the device disagree.
         assertEquals(76f, Joystick.RADIUS_DP, 0f)
         assertEquals(30f, Joystick.KNOB_DP, 0f)
         assertEquals(0.2f, Joystick.DEAD_ZONE, 0.0001f)
+        // the knob is smaller than the disc and big enough to find by touch
+        assertTrue(Joystick.KNOB_DP < Joystick.RADIUS_DP)
+        assertTrue(Joystick.KNOB_DP > 20f)
     }
 }

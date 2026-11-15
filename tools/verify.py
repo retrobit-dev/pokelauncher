@@ -1135,6 +1135,13 @@ def check_move_pad() -> None:
         fail("Joystick.kt: a pad without a dead zone walks on a resting thumb")
     if "fun direction(" not in rule_src or "fun knob(" not in rule_src:
         fail("Joystick.kt: the pad needs its direction rule and its knob clamp")
+    # An exact diagonal must resolve the same way every time. The first version
+    # used a bare `|dx| > |dy|` and sent a 45-degree push DOWN, because the
+    # vertical branch was also the else branch; that is the bug a unit test
+    # caught, and this keeps the tie-break from quietly reverting.
+    if "ax >= ay" not in rule_src:
+        fail("Joystick.kt: a diagonal needs an explicit tie-break "
+             "(without it a 45-degree push reports the vertical axis)")
 
     # 2. the drawing: a real gesture that reports a release
     if "onDirection(null)" not in pad_src:
@@ -1182,7 +1189,7 @@ def check_move_pad() -> None:
         fail("LauncherScreen.kt: the pad must float over the map, not take a row")
 
     # The hud still needs the callback for the branch behind the flag.
-    if "onMove: (dev.retrobit.pokelauncher.game.Direction?) -> Unit" not in screen_src:
+    if "onMove: (Direction?) -> Unit" not in screen_src:
         fail("GameScreen.kt: GameHud needs the pad's callback")
     if "fun holdDirection(" not in model_src:
         fail("GameViewModel.kt: nothing turns a held direction into a step")
